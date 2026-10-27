@@ -115,7 +115,8 @@ local ApexLibrary = {}
 ApexLibrary.__index = ApexLibrary
 ApexLibrary.Version = "APEX_SYS V3.7 PLUS"
 -- Bump this when a script depends on a layout fix that older copies lack.
-ApexLibrary.LayoutRevision = 2
+-- 3: overflow tab bar gains left/right navigation arrows.
+ApexLibrary.LayoutRevision = 3
 local CONFIG_VERSION = 2
 
 ApexLibrary.Theme = Theme
@@ -401,6 +402,39 @@ function ApexLibrary:BuildGUI()
     TabBar.ScrollBarThickness = 0
     TabBar.Parent = MainFrame
 
+    -- Left/right navigation appears only when the tab bar overflows.
+    local TabScrollLeft = Instance.new("TextButton")
+    TabScrollLeft.Name = "TabScrollLeft"
+    TabScrollLeft.Size = UDim2.new(0, 22, 0, 38)
+    TabScrollLeft.Position = UDim2.new(0, 0, 0, 42)
+    TabScrollLeft.BackgroundColor3 = Theme.TabBar
+    TabScrollLeft.BorderSizePixel = 0
+    TabScrollLeft.Font = Enum.Font.RobotoMono
+    TabScrollLeft.Text = "<"
+    TabScrollLeft.TextColor3 = Theme.Muted
+    TabScrollLeft.TextSize = 14
+    TabScrollLeft.TextTransparency = 0.55
+    TabScrollLeft.AutoButtonColor = false
+    TabScrollLeft.Visible = false
+    TabScrollLeft.ZIndex = 5
+    TabScrollLeft.Parent = MainFrame
+
+    local TabScrollRight = Instance.new("TextButton")
+    TabScrollRight.Name = "TabScrollRight"
+    TabScrollRight.Size = UDim2.new(0, 22, 0, 38)
+    TabScrollRight.Position = UDim2.new(1, -22, 0, 42)
+    TabScrollRight.BackgroundColor3 = Theme.TabBar
+    TabScrollRight.BorderSizePixel = 0
+    TabScrollRight.Font = Enum.Font.RobotoMono
+    TabScrollRight.Text = ">"
+    TabScrollRight.TextColor3 = Theme.Muted
+    TabScrollRight.TextSize = 14
+    TabScrollRight.TextTransparency = 0.55
+    TabScrollRight.AutoButtonColor = false
+    TabScrollRight.Visible = false
+    TabScrollRight.ZIndex = 5
+    TabScrollRight.Parent = MainFrame
+
     local TabDivider = Instance.new("Frame")
     TabDivider.Name = "TabDivider"
     TabDivider.Size = UDim2.new(1, 0, 0, 1)
@@ -505,11 +539,24 @@ function ApexLibrary:BuildGUI()
     self.ScreenGui = ScreenGui
     self.MainFrame = MainFrame
     self.TabBar = TabBar
+    self.TabScrollLeft = TabScrollLeft
+    self.TabScrollRight = TabScrollRight
+    self.TabScrollWidth = 88
     self.SectionHeader = SectionHeader
     self.TabCount = 0
     self.TabButtonsList = {}
     self.IsUIVisible = true
     self.IsAnimating = false
+
+    TabScrollLeft.Activated:Connect(function()
+        self:ScrollTabs(-1)
+    end)
+    TabScrollRight.Activated:Connect(function()
+        self:ScrollTabs(1)
+    end)
+    TabBar:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
+        self:UpdateTabScrollButtons()
+    end)
 
     function self:SetVisible(visible)
         if self.IsUnloaded or not self.ScreenGui or not self.ScreenGui.Parent then
@@ -983,6 +1030,78 @@ local function CreateColorPopup(parentLib, name, defaultColor, callback, preview
     return API
 end
 
+function ApexLibrary:GetTabScrollMax()
+    local count = #(self.TabButtonsList or {})
+    local tabWidth = self.TabScrollWidth or 88
+    local viewWidth = (self.WindowWidth or 392) - 44
+    return math.max(0, count * tabWidth - viewWidth)
+end
+
+function ApexLibrary:UpdateTabScrollButtons()
+    if not self.TabBar or not self.TabScrollLeft or not self.TabScrollRight then
+        return
+    end
+
+    local useScroll = self.TabBar.ScrollingEnabled == true
+    self.TabScrollLeft.Visible = useScroll
+    self.TabScrollRight.Visible = useScroll
+    if not useScroll then
+        return
+    end
+
+    local canvas = self.TabBar.CanvasPosition
+    local current = canvas and canvas.X or 0
+    local maxScroll = self:GetTabScrollMax()
+    local canGoLeft = current > 0.5
+    local canGoRight = current < maxScroll - 0.5
+
+    self.TabScrollLeft.TextColor3 = canGoLeft and Theme.Text or Theme.Muted
+    self.TabScrollLeft.TextTransparency = canGoLeft and 0 or 0.55
+    self.TabScrollRight.TextColor3 = canGoRight and Theme.Text or Theme.Muted
+    self.TabScrollRight.TextTransparency = canGoRight and 0 or 0.55
+end
+
+function ApexLibrary:ScrollTabs(direction)
+    if not self.TabBar or not self.TabBar.ScrollingEnabled then
+        return
+    end
+
+    local tabWidth = self.TabScrollWidth or 88
+    local canvas = self.TabBar.CanvasPosition
+    local current = canvas and canvas.X or 0
+    local maxScroll = self:GetTabScrollMax()
+    local target = math.clamp(current + (direction or 1) * tabWidth * 3, 0, maxScroll)
+    if target ~= current then
+        self.TabBar.CanvasPosition = Vector2.new(target, 0)
+    end
+    self:UpdateTabScrollButtons()
+end
+
+function ApexLibrary:EnsureTabVisible(entry)
+    if not self.TabBar or not self.TabBar.ScrollingEnabled or not entry then
+        return
+    end
+
+    local tabWidth = self.TabScrollWidth or 88
+    local viewWidth = (self.WindowWidth or 392) - 44
+    local canvas = self.TabBar.CanvasPosition
+    local current = canvas and canvas.X or 0
+    local left = entry.Button.Position.X.Offset
+    local target = current
+
+    if left < current then
+        target = left
+    elseif left + tabWidth > current + viewWidth then
+        target = left + tabWidth - viewWidth
+    end
+
+    target = math.clamp(target, 0, self:GetTabScrollMax())
+    if target ~= current then
+        self.TabBar.CanvasPosition = Vector2.new(target, 0)
+    end
+    self:UpdateTabScrollButtons()
+end
+
 function ApexLibrary:UpdateTabSizes()
     local count = math.max(#self.TabButtonsList, 1)
     -- Six equal tabs match the reference. Once a script adds more than six,
@@ -990,12 +1109,20 @@ function ApexLibrary:UpdateTabSizes()
     -- squeezing every label into an unusable width.
     local useScroll = count > 6
     local scrollTabWidth = 88
+    local scrollArrowWidth = 22
+
+    self.TabScrollWidth = scrollTabWidth
 
     if self.TabBar then
+        self.TabBar.Position = UDim2.new(0, useScroll and scrollArrowWidth or 0, 0, 42)
+        self.TabBar.Size = UDim2.new(1, useScroll and -(scrollArrowWidth * 2) or 0, 0, 38)
         self.TabBar.ScrollingEnabled = useScroll
         self.TabBar.ScrollBarThickness = useScroll and 2 or 0
         self.TabBar.AutomaticCanvasSize = useScroll and Enum.AutomaticSize.X or Enum.AutomaticSize.None
         self.TabBar.CanvasSize = UDim2.new(0, 0, 0, 0)
+        if not useScroll then
+            self.TabBar.CanvasPosition = Vector2.new(0, 0)
+        end
     end
 
     for index, entry in ipairs(self.TabButtonsList) do
@@ -1011,6 +1138,8 @@ function ApexLibrary:UpdateTabSizes()
             entry.Line.Position = UDim2.new(0, 0, 1, -2)
         end
     end
+
+    self:UpdateTabScrollButtons()
 end
 
 function ApexLibrary:ActivateTab(entry, silent)
@@ -1040,6 +1169,7 @@ function ApexLibrary:ActivateTab(entry, silent)
     end
     self.SectionHeader.Text = entry.SectionTitle
     self.ActiveTabName = entry.Name
+    self:EnsureTabVisible(entry)
     self:CloseColorPopups()
 end
 

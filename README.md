@@ -72,7 +72,7 @@ The window is created immediately. The first tab is selected automatically.
 | Method / property | Description |
 | --- | --- |
 | `Apex:CreateTab(name, sectionTitle)` | Creates a tab and returns a tab object. `name` is the tab label; `sectionTitle` is the header shown above the tab content. |
-| `Apex:SelectTab(name, silent)` | Activates a tab by name. Pass `true` to skip the click sound. |
+| `Apex:SelectTab(name, silent)` | Activates a tab by name. `silent` is accepted for compatibility; the library no longer plays audio. |
 | `Apex:SetVisible(visible)` | Animates the window closed into the mobile button, or opens it again. |
 | `Apex:GetAccentColor()` | Returns the current accent `Color3`. |
 | `Apex:SetAccentColor(color)` | Updates all registered accent listeners and saves the setting. |
@@ -343,7 +343,7 @@ Config version 1 and older are migrated to the terminal defaults so an old blue 
 - Press the hide key (`RightControl` by default) to hide/show the window on PC.
 - On touch devices, a draggable claw button opens and closes the window.
 - Tabs divide the bar equally and show a 2px accent underline when active.
-- With more than six tabs, the tab bar keeps each label readable and scrolls horizontally instead of squeezing every tab.
+- With more than six tabs, the tab bar keeps each label readable and scrolls horizontally instead of squeezing every tab. Left/right arrow buttons appear on each side and jump three tabs at a time; selecting a tab scrolls it into view.
 - Changing the accent color updates buttons, active tab lines, color swatches, status text, and other registered accents immediately.
 - All corners are square except the mobile claw button.
 - Open color popups close when switching tabs or hiding the window.
