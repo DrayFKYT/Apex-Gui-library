@@ -359,6 +359,7 @@ Config version 1 and older are migrated to the terminal defaults so an old blue 
 - Press the hide key (`RightControl` by default) to hide/show the window on PC.
 - On touch devices, a draggable claw button opens and closes the window.
 - Tabs divide the bar equally and show a 2px accent underline when active.
+- With more than six tabs, the tab bar keeps each label readable and scrolls horizontally instead of squeezing every tab.
 - Changing the accent color updates buttons, active tab lines, color swatches, status text, and other registered accents immediately.
 - All corners are square except the mobile claw button.
 - Open color popups close when switching tabs or hiding the window.

@@ -1031,10 +1031,29 @@ end
 
 function ApexLibrary:UpdateTabSizes()
     local count = math.max(#self.TabButtonsList, 1)
+    -- Six equal tabs match the reference. Once a script adds more than six,
+    -- keep each tab readable and let the bar scroll horizontally instead of
+    -- squeezing every label into an unusable width.
+    local useScroll = count > 6
+    local scrollTabWidth = 88
+
+    if self.TabBar then
+        self.TabBar.ScrollingEnabled = useScroll
+        self.TabBar.ScrollBarThickness = useScroll and 2 or 0
+        self.TabBar.AutomaticCanvasSize = useScroll and Enum.AutomaticSize.X or Enum.AutomaticSize.None
+        self.TabBar.CanvasSize = UDim2.new(0, 0, 0, 0)
+    end
+
     for index, entry in ipairs(self.TabButtonsList) do
-        entry.Button.Position = UDim2.new((index - 1) / count, 0, 0, 0)
-        entry.Button.Size = UDim2.new(1 / count, 0, 1, 0)
-        entry.Button.TextSize = count >= 4 and 10 or 12
+        if useScroll then
+            entry.Button.Position = UDim2.new(0, (index - 1) * scrollTabWidth, 0, 0)
+            entry.Button.Size = UDim2.new(0, scrollTabWidth, 1, 0)
+            entry.Button.TextSize = 11
+        else
+            entry.Button.Position = UDim2.new((index - 1) / count, 0, 0, 0)
+            entry.Button.Size = UDim2.new(1 / count, 0, 1, 0)
+            entry.Button.TextSize = count >= 4 and 10 or 12
+        end
     end
 end
 
