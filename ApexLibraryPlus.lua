@@ -1,5 +1,5 @@
 --[================================================================[
-    PROJECT: APEX_SYS // STANDALONE GUI LIBRARY ENGINE (V3.6 PLUS)
+    PROJECT: APEX_SYS // STANDALONE GUI LIBRARY ENGINE (V3.7 PLUS)
     DESIGN: Precision Terminal HUD & Advanced Modular Framework
     BASE:   APEX_SYS V3.5 (core visual style preserved)
     EXTENSIONS:
@@ -19,7 +19,6 @@ local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local HttpService = game:GetService("HttpService")
 local TweenService = game:GetService("TweenService")
-local SoundService = game:GetService("SoundService")
 
 -- // Variables
 local LocalPlayer = Players.LocalPlayer
@@ -131,10 +130,8 @@ function ApexLibrary.new(config)
     self.IsButtonLocked = false
     self.LoadedButtonPos = UDim2.new(0, 24, 0, 100)
     self.AccentColor = config.AccentColor or Theme.Accent
-    self.AudioEnabled = config.AudioEnabled ~= false
     self.MobileButtonRef = nil
     self.AccentUpdateCallbacks = {}
-    self.AudioListeners = {}
     self.ColorPopups = {}
     self.UnloadCallbacks = {}
     self.IsListeningForKey = false
@@ -162,9 +159,6 @@ function ApexLibrary.new(config)
                         self.CurrentHideKey = key
                     end
                 end)
-            end
-            if loadedConfigData.AudioEnabled ~= nil then
-                self.AudioEnabled = loadedConfigData.AudioEnabled and true or false
             end
         end
         if loadedConfigData.IsButtonLocked ~= nil then
@@ -229,41 +223,6 @@ function ApexLibrary:SetAccentColor(newColor)
     self:SaveSettings()
 end
 
-function ApexLibrary:PlayUISound()
-    if not self.AudioEnabled or self.IsUnloaded then
-        return
-    end
-    pcall(function()
-        if not self.ClickSound or not self.ClickSound.Parent then
-            self.ClickSound = Instance.new("Sound")
-            self.ClickSound.Name = "ApexUiClick"
-            self.ClickSound.SoundId = "rbxasset://sounds/electronicpingshort.wav"
-            self.ClickSound.Volume = 0.16
-            self.ClickSound.PlaybackSpeed = 1.15
-            self.ClickSound.Parent = SoundService
-        end
-        self.ClickSound:Stop()
-        self.ClickSound:Play()
-    end)
-end
-
-function ApexLibrary:RegisterAudioListener(callback)
-    if type(callback) == "function" then
-        table.insert(self.AudioListeners, callback)
-    end
-end
-
-function ApexLibrary:SetAudioEnabled(enabled, playTest)
-    self.AudioEnabled = enabled and true or false
-    for _, callback in ipairs(self.AudioListeners) do
-        pcall(callback, self.AudioEnabled)
-    end
-    if self.AudioEnabled and playTest ~= false then
-        self:PlayUISound()
-    end
-    self:SaveSettings()
-end
-
 function ApexLibrary:SetStatus(text)
     self.StatusText = tostring(text or "READY")
     if self.StatusValueLabel then
@@ -280,12 +239,6 @@ function ApexLibrary:Unload()
         pcall(callback)
     end
     self:CloseColorPopups()
-    if self.ClickSound then
-        pcall(function()
-            self.ClickSound:Destroy()
-        end)
-        self.ClickSound = nil
-    end
     if self.ScreenGui then
         self.ScreenGui:Destroy()
     end
@@ -304,7 +257,6 @@ function ApexLibrary:SaveSettings()
             B = math.floor(self.AccentColor.B * 255 + 0.5)
         },
         HideKey = self.CurrentHideKey.Name,
-        AudioEnabled = self.AudioEnabled,
         IsButtonLocked = self.IsButtonLocked,
         ButtonPosition = self.MobileButtonRef and {
             X = {
@@ -1087,9 +1039,6 @@ function ApexLibrary:ActivateTab(entry, silent)
     self.SectionHeader.Text = entry.SectionTitle
     self.ActiveTabName = entry.Name
     self:CloseColorPopups()
-    if not silent then
-        self:PlayUISound()
-    end
 end
 
 function ApexLibrary:SelectTab(tabName, silent)
@@ -1259,7 +1208,6 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
             end
         end)
         action.Activated:Connect(function()
-            parentLib:PlayUISound()
             if callback then
                 pcall(callback)
             end
@@ -1398,7 +1346,6 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
                 }):Play()
             end)
             button.Activated:Connect(function()
-                parentLib:PlayUISound()
                 if callback then
                     pcall(callback)
                 end
@@ -1597,7 +1544,6 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
 
             switchTrack.Activated:Connect(function()
                 enabled = not enabled
-                parentLib:PlayUISound()
                 applySideToggleVisual(switchThumb, trackStroke, enabled, parentLib.AccentColor)
                 if callback then
                     pcall(callback, enabled)
@@ -1690,7 +1636,6 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         end
 
         switchTrack.Activated:Connect(function()
-            parentLib:PlayUISound()
             setState(not enabled, true)
         end)
 
@@ -1804,7 +1749,6 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         end
 
         switchTrack.Activated:Connect(function()
-            parentLib:PlayUISound()
             setState(not enabled, true)
         end)
 
@@ -1906,7 +1850,6 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         end
 
         switchTrack.Activated:Connect(function()
-            parentLib:PlayUISound()
             setState(not enabled, true)
         end)
 
@@ -2029,7 +1972,6 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         end
 
         keybindButton.Activated:Connect(function()
-            parentLib:PlayUISound()
             if listening then
                 stopListening()
                 return
@@ -2091,61 +2033,7 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         return API
     end
 
-    -- 6. Audio Feedback Card Component
-    function TabObj:CreateAudioFeedbackCard(callback)
-        local Card = Instance.new("Frame")
-        Card.Name = "AudioFeedbackCard"
-        Card.Size = UDim2.new(1, 0, 0, 39)
-        Card.BackgroundColor3 = Theme.Card
-        Card.BorderSizePixel = 0
-        Card.Parent = container
-
-        local title = Instance.new("TextLabel", Card)
-        title.Size = UDim2.new(1, -130, 1, 0)
-        title.Position = UDim2.new(0, 12, 0, 0)
-        title.BackgroundTransparency = 1
-        title.Font = Enum.Font.GothamMedium
-        title.Text = "Audio Feedback"
-        title.TextColor3 = Theme.Text
-        title.TextSize = 13
-        title.TextXAlignment = Enum.TextXAlignment.Left
-
-        local stateButton = Instance.new("TextButton", Card)
-        stateButton.Name = "AudioStateButton"
-        stateButton.Size = UDim2.new(0, 110, 1, 0)
-        stateButton.AnchorPoint = Vector2.new(1, 0)
-        stateButton.Position = UDim2.new(1, -14, 0, 0)
-        stateButton.BackgroundTransparency = 1
-        stateButton.AutoButtonColor = false
-        stateButton.Font = Enum.Font.GothamBold
-        stateButton.TextSize = 11
-        stateButton.TextXAlignment = Enum.TextXAlignment.Right
-        stateButton.Text = parentLib.AudioEnabled and "ENABLED" or "DISABLED"
-        stateButton.TextColor3 = parentLib.AudioEnabled and Theme.Green or Theme.Muted
-
-        local function refresh(enabled)
-            if not stateButton.Parent then
-                return
-            end
-            stateButton.Text = enabled and "ENABLED" or "DISABLED"
-            stateButton.TextColor3 = enabled and Theme.Green or Theme.Muted
-        end
-
-        parentLib:RegisterAudioListener(refresh)
-
-        stateButton.Activated:Connect(function()
-            local nextState = not parentLib.AudioEnabled
-            parentLib:SetAudioEnabled(nextState, true)
-            refresh(parentLib.AudioEnabled)
-            if callback then
-                pcall(callback, parentLib.AudioEnabled)
-            end
-        end)
-
-        return stateButton
-    end
-
-    -- 7. Kill Script Button. Anchored above the footer so it matches the
+    -- 6. Kill Script Button. Anchored above the footer so it matches the
     -- reference and never scrolls with the tab content.
     function TabObj:CreateKillButton(text, callback, contentHeight)
         local button = Instance.new("TextButton")
@@ -2222,7 +2110,7 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         return button
     end
 
-    -- 8. Info Card Component
+    -- 7. Info Card Component
     function TabObj:CreateInfoCard(labelName, valueText)
         local Card = Instance.new("Frame")
         Card.Size = UDim2.new(1, 0, 0, 40)

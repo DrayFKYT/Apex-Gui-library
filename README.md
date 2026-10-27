@@ -1,6 +1,6 @@
 # APEX_SYS V3.7 PLUS
 
-A standalone Roblox GUI library built on the `SYSTEM_CONTROL // ENGINE` terminal style. It provides a draggable 392 × 397 window, scrollable tabs, toggles, inputs, full HSV color pickers, keybind controls, list cards, audio feedback, unload callbacks, and a fixed kill button without requiring external assets.
+A standalone Roblox GUI library built on the `SYSTEM_CONTROL // ENGINE` terminal style. It provides a draggable 392 × 397 window, scrollable tabs, toggles, inputs, full HSV color pickers, keybind controls, list cards, unload callbacks, and a fixed kill button without requiring external assets.
 
 The original APEX_SYS V3.5 file is not modified. `ApexLibraryPlus.lua` is a separate extended library.
 
@@ -63,7 +63,6 @@ local Apex = ApexLibrary.new(config)
 | `StatusText` | `string` | `"READY"` | Initial footer status. |
 | `HideKey` | `Enum.KeyCode` | `Enum.KeyCode.RightControl` | PC key used to hide/show the window. |
 | `AccentColor` | `Color3` | `Color3.fromRGB(255, 85, 0)` | Initial accent color. |
-| `AudioEnabled` | `boolean` | `true` | Enables UI click sounds. |
 | `SaveFileName` | `string` | `"ApexLibrary_Config.json"` | Config file name for this window. |
 
 The window is created immediately. The first tab is selected automatically.
@@ -79,14 +78,10 @@ The window is created immediately. The first tab is selected automatically.
 | `Apex:SetAccentColor(color)` | Updates all registered accent listeners and saves the setting. |
 | `Apex:RegisterAccentListener(callback)` | Calls `callback(color)` whenever the accent color changes. |
 | `Apex:RegisterUnloadCallback(callback)` | Calls `callback()` when the library unloads. |
-| `Apex:RegisterAudioListener(callback)` | Calls `callback(enabled)` whenever audio feedback changes. |
-| `Apex:SetAudioEnabled(enabled, playTest)` | Enables or disables UI sounds and notifies audio listeners. `playTest` defaults to `true`. |
-| `Apex:PlayUISound()` | Plays the UI click sound if audio is enabled. |
 | `Apex:SetStatus(text)` | Updates the footer status text until the next status change. |
 | `Apex:Unload()` | Runs unload callbacks, closes pickers, and destroys the window, sounds, and mobile button. |
-| `Apex:SaveSettings()` | Saves accent color, hide key, audio state, mobile lock state, and mobile button position. |
+| `Apex:SaveSettings()` | Saves accent color, hide key, mobile lock state, and mobile button position. |
 | `Apex:CloseColorPopups()` | Closes every open color-picker popup. |
-| `Apex.AudioEnabled` | Current audio state. |
 | `Apex.Version` | `"APEX_SYS V3.7 PLUS"` |
 
 `Apex:Unload()` destroys the library GUI and mobile button. It does **not** stop your own loops or connections automatically; register an unload callback for that:
@@ -301,16 +296,6 @@ Returns an API:
 | `keybind:GetKey()` | Returns the current `Enum.KeyCode`. |
 | `keybind:GetButton()` | Returns the keybind `TextButton`. |
 
-### Audio feedback card
-
-```lua
-local audio = Tab:CreateAudioFeedbackCard(function(enabled)
-    print("audio:", enabled)
-end)
-```
-
-Creates the `Audio Feedback` row with the green `ENABLED` / muted `DISABLED` state button. Returns the state `TextButton`.
-
 ### Kill script button
 
 ```lua
@@ -346,7 +331,6 @@ It stores:
 - Config version
 - Accent color
 - Hide key
-- Audio feedback state
 - Mobile button lock state
 - Mobile button position
 
@@ -371,11 +355,12 @@ Config version 1 and older are migrated to the terminal defaults so an old blue 
 `APEX_SYS V3.7 PLUS` adds:
 
 - `SYSTEM_CONTROL // ENGINE` terminal skin: `#FF5500` accent, navy panels, square corners, orange active tabs, `LUAU` badge, and `STATUS` / brand footer
-- `BrandText`, `StatusText`, and `AudioEnabled` constructor options
-- `SetStatus`, `PlayUISound`, `SetAudioEnabled`, `RegisterAudioListener`, and `Unload`
-- `CreateAudioFeedbackCard` and `CreateKillButton`
+- `BrandText` and `StatusText` constructor options
+- `SetStatus` and `Unload`
+- `CreateKillButton`
 - Optional content height for tabs with a fixed kill button
 - Config version 2 migration from the old blue APEX theme
+- Audio feedback removed; the library no longer uses sound assets
 - Full SV square + hue slider + RGB color picker retained
 
 `APEX_SYS V3.6 PLUS` added `CreateButton`, `CreateSectionLabel`, `CreateListCard`, component handles, fixed color-picker initialization, popup management, unload callbacks, and keybind listening guards.
