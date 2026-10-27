@@ -1,6 +1,6 @@
-# APEX_SYS V3.6 PLUS
+# APEX_SYS V3.7 PLUS
 
-A standalone Roblox GUI library built on the APEX_SYS visual style. It provides a draggable window, scrollable tabs, toggles, inputs, color pickers, keybind controls, list cards, and unload callbacks without requiring external assets.
+A standalone Roblox GUI library built on the `SYSTEM_CONTROL // ENGINE` terminal style. It provides a draggable 392 × 397 window, scrollable tabs, toggles, inputs, full HSV color pickers, keybind controls, list cards, audio feedback, unload callbacks, and a fixed kill button without requiring external assets.
 
 The original APEX_SYS V3.5 file is not modified. `ApexLibraryPlus.lua` is a separate extended library.
 
@@ -24,12 +24,14 @@ local ApexLibrary = loadstring(game:HttpGet(
 ))()
 
 local Apex = ApexLibrary.new({
-    Title = "MY SCRIPT // APEX",
-    HideKey = Enum.KeyCode.P,
-    AccentColor = Color3.fromRGB(0, 160, 255),
+    Title = "SYSTEM_CONTROL // ENGINE",
+    BrandText = "APEX_SYS // RH",
+    StatusText = "READY",
+    HideKey = Enum.KeyCode.RightControl,
+    AccentColor = Color3.fromRGB(255, 85, 0),
 })
 
-local MainTab = Apex:CreateTab("MAIN", "MAIN")
+local MainTab = Apex:CreateTab("MAIN", "DASHBOARD")
 
 MainTab:CreateButton("RUN ACTION", "Runs a sample action.", function()
     print("Action ran")
@@ -56,27 +58,38 @@ local Apex = ApexLibrary.new(config)
 
 | Option | Type | Default | Description |
 | --- | --- | --- | --- |
-| `Title` | `string` | `"APEX // LIBRARY"` | Text shown in the window header. |
-| `HideKey` | `Enum.KeyCode` | `Enum.KeyCode.P` | PC key used to hide/show the window. |
-| `AccentColor` | `Color3` | `Color3.fromRGB(0, 160, 255)` | Initial accent color. |
+| `Title` | `string` | `"SYSTEM_CONTROL // ENGINE"` | Text shown in the window header. |
+| `BrandText` | `string` | `"APEX_SYS // RH"` | Right-side footer label. |
+| `StatusText` | `string` | `"READY"` | Initial footer status. |
+| `HideKey` | `Enum.KeyCode` | `Enum.KeyCode.RightControl` | PC key used to hide/show the window. |
+| `AccentColor` | `Color3` | `Color3.fromRGB(255, 85, 0)` | Initial accent color. |
+| `AudioEnabled` | `boolean` | `true` | Enables UI click sounds. |
+| `SaveFileName` | `string` | `"ApexLibrary_Config.json"` | Config file name for this window. |
 
 The window is created immediately. The first tab is selected automatically.
 
 ## Window API
 
-| Method | Description |
+| Method / property | Description |
 | --- | --- |
 | `Apex:CreateTab(name, sectionTitle)` | Creates a tab and returns a tab object. `name` is the tab label; `sectionTitle` is the header shown above the tab content. |
+| `Apex:SelectTab(name, silent)` | Activates a tab by name. Pass `true` to skip the click sound. |
 | `Apex:SetVisible(visible)` | Animates the window closed into the mobile button, or opens it again. |
 | `Apex:GetAccentColor()` | Returns the current accent `Color3`. |
 | `Apex:SetAccentColor(color)` | Updates all registered accent listeners and saves the setting. |
 | `Apex:RegisterAccentListener(callback)` | Calls `callback(color)` whenever the accent color changes. |
-| `Apex:RegisterUnloadCallback(callback)` | Calls `callback()` when the user clicks **UNLOAD LIBRARY**. |
-| `Apex:SaveSettings()` | Saves accent color, hide key, mobile lock state, and mobile button position. |
+| `Apex:RegisterUnloadCallback(callback)` | Calls `callback()` when the library unloads. |
+| `Apex:RegisterAudioListener(callback)` | Calls `callback(enabled)` whenever audio feedback changes. |
+| `Apex:SetAudioEnabled(enabled, playTest)` | Enables or disables UI sounds and notifies audio listeners. `playTest` defaults to `true`. |
+| `Apex:PlayUISound()` | Plays the UI click sound if audio is enabled. |
+| `Apex:SetStatus(text)` | Updates the footer status text until the next status change. |
+| `Apex:Unload()` | Runs unload callbacks, closes pickers, and destroys the window, sounds, and mobile button. |
+| `Apex:SaveSettings()` | Saves accent color, hide key, audio state, mobile lock state, and mobile button position. |
 | `Apex:CloseColorPopups()` | Closes every open color-picker popup. |
-| `Apex.Version` | `"APEX_SYS V3.6 PLUS"` |
+| `Apex.AudioEnabled` | Current audio state. |
+| `Apex.Version` | `"APEX_SYS V3.7 PLUS"` |
 
-The unload button destroys the library GUI and mobile button. It does **not** stop your own loops or connections automatically; register an unload callback for that:
+`Apex:Unload()` destroys the library GUI and mobile button. It does **not** stop your own loops or connections automatically; register an unload callback for that:
 
 ```lua
 Apex:RegisterUnloadCallback(function()
@@ -178,7 +191,7 @@ Returns an API:
 | `esp:GetColor()` | Returns the selected `Color3`. |
 | `esp:SetColor(color)` | Sets the color without firing the color callback. |
 
-The color swatch opens a full HSV picker with RGB inputs and an apply button. Open pickers close when the tab changes or the window is hidden.
+The color swatch opens a full HSV picker with an SV square, hue slider, RGB inputs, and an apply button. Open pickers close when the tab changes or the window is hidden.
 
 ### Standalone color picker
 
@@ -226,7 +239,7 @@ local list = Tab:CreateListCard("PLAYERS", "Live list", 220)
 
 list:Clear()
 list:AddLabel("PlayerOne", Color3.fromRGB(180, 220, 255))
-list:AddButton("Teleport", Color3.fromRGB(0, 160, 255), function()
+list:AddButton("Teleport", Color3.fromRGB(255, 85, 0), function()
     print("teleport")
 end)
 list:AddSpacer(8)
@@ -276,17 +289,46 @@ end)
 ### PC keybind card
 
 ```lua
-Tab:CreateKeybindCard()
+local keybind = Tab:CreateKeybindCard()
 ```
 
 Creates a card that lets the user press a new key to hide/show the window. The current key is saved to `ApexLibrary_Config.json`.
+
+Returns an API:
+
+| Method | Description |
+| --- | --- |
+| `keybind:GetKey()` | Returns the current `Enum.KeyCode`. |
+| `keybind:GetButton()` | Returns the keybind `TextButton`. |
+
+### Audio feedback card
+
+```lua
+local audio = Tab:CreateAudioFeedbackCard(function(enabled)
+    print("audio:", enabled)
+end)
+```
+
+Creates the `Audio Feedback` row with the green `ENABLED` / muted `DISABLED` state button. Returns the state `TextButton`.
+
+### Kill script button
+
+```lua
+Tab:CreateKillButton("KILL SCRIPT & CLEANUP", function()
+    Apex:Unload()
+end, 129)
+```
+
+Creates the red fixed kill button anchored above the footer. It is only visible while its tab is active and does not scroll with tab content. The optional third argument sets the active tab's content height (clamped to 40–160); omit it to use the default 160px.
+
+Returns the `TextButton`.
 
 ### Info card
 
 ```lua
 local info = Tab:CreateInfoCard("VERSION", Apex.Version)
 
-info:SetValue("APEX_SYS V3.6 PLUS")
+info:SetValue("APEX_SYS V3.7 PLUS")
 ```
 
 Returns an API with `SetValue(text)`.
@@ -301,34 +343,40 @@ ApexLibrary_Config.json
 
 It stores:
 
+- Config version
 - Accent color
 - Hide key
+- Audio feedback state
 - Mobile button lock state
 - Mobile button position
 
-Persistence is guarded with `pcall`. If the executor does not provide `readfile`, `writefile`, or `isfile`, the UI still works with defaults.
+Config version 1 and older are migrated to the terminal defaults so an old blue APEX config does not carry its accent or `P` hide key forward. Persistence is guarded with `pcall`. If the executor does not provide `readfile`, `writefile`, or `isfile`, the UI still works with defaults.
 
 ## UI behavior
 
+- The window is a fixed 392 × 397 terminal panel with a 42px header, 38px tab bar, and 30px footer.
 - The window is draggable from the header bar.
-- Press the hide key (`P` by default) to hide/show the window on PC.
+- Press the hide key (`RightControl` by default) to hide/show the window on PC.
 - On touch devices, a draggable claw button opens and closes the window.
-- Changing the accent color updates buttons, active tab lines, color swatches, and other registered accents immediately.
+- Tabs divide the bar equally and show a 2px accent underline when active.
+- Changing the accent color updates buttons, active tab lines, color swatches, status text, and other registered accents immediately.
+- All corners are square except the mobile claw button.
 - Open color popups close when switching tabs or hiding the window.
 - Re-running the library destroys the previous `ApexSystemControl` and `ApexMobileButtonGui` instances before creating replacements.
 - Callbacks are protected with `pcall`, so an error in a component callback does not break the rest of the UI.
 
 ## Version notes
 
-`APEX_SYS V3.6 PLUS` adds:
+`APEX_SYS V3.7 PLUS` adds:
 
-- `CreateButton`
-- `CreateSectionLabel`
-- `CreateListCard`
-- Component handles for toggles, inputs, colors, buttons, and info cards
-- Fixed color-picker initialization and RGB input handling
-- Color popup manager that closes pickers on tab switch or hide
-- Unload callbacks for user scripts
-- Keybind listening guard
+- `SYSTEM_CONTROL // ENGINE` terminal skin: `#FF5500` accent, navy panels, square corners, orange active tabs, `LUAU` badge, and `STATUS` / brand footer
+- `BrandText`, `StatusText`, and `AudioEnabled` constructor options
+- `SetStatus`, `PlayUISound`, `SetAudioEnabled`, `RegisterAudioListener`, and `Unload`
+- `CreateAudioFeedbackCard` and `CreateKillButton`
+- Optional content height for tabs with a fixed kill button
+- Config version 2 migration from the old blue APEX theme
+- Full SV square + hue slider + RGB color picker retained
+
+`APEX_SYS V3.6 PLUS` added `CreateButton`, `CreateSectionLabel`, `CreateListCard`, component handles, fixed color-picker initialization, popup management, unload callbacks, and keybind listening guards.
 
 The original APEX_SYS V3.5 library remains unchanged.

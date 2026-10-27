@@ -19,6 +19,7 @@ local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local HttpService = game:GetService("HttpService")
 local TweenService = game:GetService("TweenService")
+local SoundService = game:GetService("SoundService")
 
 -- // Variables
 local LocalPlayer = Players.LocalPlayer
@@ -56,11 +57,35 @@ end
 
 local loadedConfigData = LoadConfig()
 
+-- // Terminal theme sampled from the SYSTEM_CONTROL reference.
+local Theme = {
+    Window      = Color3.fromRGB(26, 29, 35),   -- #1A1D23
+    Header      = Color3.fromRGB(34, 38, 48),   -- #222630
+    Card        = Color3.fromRGB(34, 38, 48),   -- #222630
+    TabBar      = Color3.fromRGB(22, 24, 29),   -- #16181D
+    TabActive   = Color3.fromRGB(25, 28, 34),   -- #191C22
+    Input       = Color3.fromRGB(18, 20, 23),   -- #121417
+    Footer      = Color3.fromRGB(18, 20, 23),   -- #121417
+    Border      = Color3.fromRGB(46, 52, 64),   -- #2E3440
+    Divider     = Color3.fromRGB(37, 41, 50),   -- #252932
+    Text        = Color3.fromRGB(255, 255, 255),
+    Muted       = Color3.fromRGB(138, 146, 160), -- #8A92A0
+    Section     = Color3.fromRGB(131, 137, 152), -- #838998
+    Body        = Color3.fromRGB(160, 168, 182),
+    Green       = Color3.fromRGB(52, 211, 153),  -- #34D399
+    Red         = Color3.fromRGB(255, 107, 107),
+    RedDim      = Color3.fromRGB(252, 165, 165),
+    RedBg       = Color3.fromRGB(44, 21, 25),    -- #2C1519
+    RedBorder   = Color3.fromRGB(92, 31, 36),    -- #5C1F24
+    Accent      = Color3.fromRGB(255, 85, 0),    -- #FF5500
+    Thumb       = Color3.fromRGB(124, 133, 149), -- #7C8595
+}
+
 -- // Shared visual helpers
 local function applyToggleVisual(thumb, stroke, enabled, accent)
-    local targetPos = enabled and UDim2.new(1, -21, 0.5, -8) or UDim2.new(0, 3, 0.5, -8)
-    local thumbColor = enabled and accent or Color3.fromRGB(110, 120, 135)
-    local strokeColor = enabled and accent or Color3.fromRGB(45, 45, 58)
+    local targetPos = enabled and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
+    local thumbColor = enabled and accent or Theme.Thumb
+    local strokeColor = enabled and accent or Theme.Border
     TweenService:Create(thumb, TweenInfo.new(0.18, Enum.EasingStyle.Quad), {
         Position = targetPos,
         BackgroundColor3 = thumbColor
@@ -71,9 +96,9 @@ local function applyToggleVisual(thumb, stroke, enabled, accent)
 end
 
 local function applySideToggleVisual(thumb, stroke, enabled, accent)
-    local targetPos = enabled and UDim2.new(1, -18, 0.5, -7) or UDim2.new(0, 2, 0.5, -7)
-    local thumbColor = enabled and accent or Color3.fromRGB(110, 120, 135)
-    local strokeColor = enabled and accent or Color3.fromRGB(45, 45, 58)
+    local targetPos = enabled and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
+    local thumbColor = enabled and accent or Theme.Thumb
+    local strokeColor = enabled and accent or Theme.Border
     TweenService:Create(thumb, TweenInfo.new(0.18, Enum.EasingStyle.Quad), {
         Position = targetPos,
         BackgroundColor3 = thumbColor
@@ -89,40 +114,58 @@ end
 
 local ApexLibrary = {}
 ApexLibrary.__index = ApexLibrary
-ApexLibrary.Version = "APEX_SYS V3.6 PLUS"
+ApexLibrary.Version = "APEX_SYS V3.7 PLUS"
+local CONFIG_VERSION = 2
+
+ApexLibrary.Theme = Theme
 
 function ApexLibrary.new(config)
     local self = setmetatable({}, ApexLibrary)
     config = config or {}
 
-    self.Title = config.Title or "APEX // LIBRARY"
+    self.Title = config.Title or "SYSTEM_CONTROL // ENGINE"
+    self.BrandText = config.BrandText or "APEX_SYS // RH"
+    self.StatusText = config.StatusText or "READY"
     self.SaveFileName = config.SaveFileName or ConfigFile
-    self.CurrentHideKey = config.HideKey or Enum.KeyCode.P
+    self.CurrentHideKey = config.HideKey or Enum.KeyCode.RightControl
     self.IsButtonLocked = false
     self.LoadedButtonPos = UDim2.new(0, 24, 0, 100)
-    self.AccentColor = config.AccentColor or Color3.fromRGB(0, 160, 255)
+    self.AccentColor = config.AccentColor or Theme.Accent
+    self.AudioEnabled = config.AudioEnabled ~= false
     self.MobileButtonRef = nil
     self.AccentUpdateCallbacks = {}
+    self.AudioListeners = {}
     self.ColorPopups = {}
     self.UnloadCallbacks = {}
     self.IsListeningForKey = false
     self.IsUnloaded = false
+    self.ConfigVersion = CONFIG_VERSION
 
+    local savedConfigVersion = 0
     if type(loadedConfigData) == "table" then
-        if loadedConfigData.AccentColor then
-            self.AccentColor = Color3.fromRGB(
-                loadedConfigData.AccentColor.R or 0,
-                loadedConfigData.AccentColor.G or 160,
-                loadedConfigData.AccentColor.B or 255
-            )
-        end
-        if loadedConfigData.HideKey then
-            pcall(function()
-                local key = Enum.KeyCode[loadedConfigData.HideKey]
-                if key then
-                    self.CurrentHideKey = key
-                end
-            end)
+        savedConfigVersion = tonumber(loadedConfigData.ConfigVersion) or 0
+        -- Version 1 and older used the blue APEX theme and the P hide key.
+        -- Migrate those configs to the terminal theme instead of carrying the
+        -- old look forward. Mobile-button settings are safe to keep.
+        if savedConfigVersion >= CONFIG_VERSION then
+            if loadedConfigData.AccentColor then
+                self.AccentColor = Color3.fromRGB(
+                    loadedConfigData.AccentColor.R or 255,
+                    loadedConfigData.AccentColor.G or 85,
+                    loadedConfigData.AccentColor.B or 0
+                )
+            end
+            if loadedConfigData.HideKey then
+                pcall(function()
+                    local key = Enum.KeyCode[loadedConfigData.HideKey]
+                    if key then
+                        self.CurrentHideKey = key
+                    end
+                end)
+            end
+            if loadedConfigData.AudioEnabled ~= nil then
+                self.AudioEnabled = loadedConfigData.AudioEnabled and true or false
+            end
         end
         if loadedConfigData.IsButtonLocked ~= nil then
             self.IsButtonLocked = loadedConfigData.IsButtonLocked
@@ -141,6 +184,9 @@ function ApexLibrary.new(config)
     end
 
     self:BuildGUI()
+    if savedConfigVersion < CONFIG_VERSION then
+        self:SaveSettings()
+    end
     return self
 end
 
@@ -183,14 +229,82 @@ function ApexLibrary:SetAccentColor(newColor)
     self:SaveSettings()
 end
 
+function ApexLibrary:PlayUISound()
+    if not self.AudioEnabled or self.IsUnloaded then
+        return
+    end
+    pcall(function()
+        if not self.ClickSound or not self.ClickSound.Parent then
+            self.ClickSound = Instance.new("Sound")
+            self.ClickSound.Name = "ApexUiClick"
+            self.ClickSound.SoundId = "rbxasset://sounds/electronicpingshort.wav"
+            self.ClickSound.Volume = 0.16
+            self.ClickSound.PlaybackSpeed = 1.15
+            self.ClickSound.Parent = SoundService
+        end
+        self.ClickSound:Stop()
+        self.ClickSound:Play()
+    end)
+end
+
+function ApexLibrary:RegisterAudioListener(callback)
+    if type(callback) == "function" then
+        table.insert(self.AudioListeners, callback)
+    end
+end
+
+function ApexLibrary:SetAudioEnabled(enabled, playTest)
+    self.AudioEnabled = enabled and true or false
+    for _, callback in ipairs(self.AudioListeners) do
+        pcall(callback, self.AudioEnabled)
+    end
+    if self.AudioEnabled and playTest ~= false then
+        self:PlayUISound()
+    end
+    self:SaveSettings()
+end
+
+function ApexLibrary:SetStatus(text)
+    self.StatusText = tostring(text or "READY")
+    if self.StatusValueLabel then
+        self.StatusValueLabel.Text = self.StatusText
+    end
+end
+
+function ApexLibrary:Unload()
+    if self.IsUnloaded then
+        return
+    end
+    self.IsUnloaded = true
+    for _, callback in ipairs(self.UnloadCallbacks) do
+        pcall(callback)
+    end
+    self:CloseColorPopups()
+    if self.ClickSound then
+        pcall(function()
+            self.ClickSound:Destroy()
+        end)
+        self.ClickSound = nil
+    end
+    if self.ScreenGui then
+        self.ScreenGui:Destroy()
+    end
+    local mobile = PlayerGui:FindFirstChild("ApexMobileButtonGui")
+    if mobile then
+        mobile:Destroy()
+    end
+end
+
 function ApexLibrary:SaveSettings()
     SaveConfig({
+        ConfigVersion = CONFIG_VERSION,
         AccentColor = {
             R = math.floor(self.AccentColor.R * 255 + 0.5),
             G = math.floor(self.AccentColor.G * 255 + 0.5),
             B = math.floor(self.AccentColor.B * 255 + 0.5)
         },
         HideKey = self.CurrentHideKey.Name,
+        AudioEnabled = self.AudioEnabled,
         IsButtonLocked = self.IsButtonLocked,
         ButtonPosition = self.MobileButtonRef and {
             X = {
@@ -220,6 +334,12 @@ function ApexLibrary:BuildGUI()
         oldMobile:Destroy()
     end
 
+    local WINDOW_W, WINDOW_H = 392, 397
+    self.WindowWidth = WINDOW_W
+    self.WindowHeight = WINDOW_H
+    self.ContentFullHeight = 216
+    self.ContentKillHeight = 160
+
     local ScreenGui = Instance.new("ScreenGui")
     ScreenGui.Name = "ApexSystemControl"
     ScreenGui.ResetOnSpawn = false
@@ -229,16 +349,15 @@ function ApexLibrary:BuildGUI()
 
     local MainFrame = Instance.new("CanvasGroup")
     MainFrame.Name = "MainFrame"
-    MainFrame.Size = UDim2.new(0, 420, 0, 500)
+    MainFrame.Size = UDim2.new(0, WINDOW_W, 0, WINDOW_H)
     MainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
     MainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
-    MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 33)
+    MainFrame.BackgroundColor3 = Theme.Window
     MainFrame.BorderSizePixel = 0
     MainFrame.GroupTransparency = 0
     MainFrame.Parent = ScreenGui
 
-    -- Keep the fixed layout usable on phones and small windows by scaling the
-    -- whole window instead of clipping the footer.
+    -- Keep the fixed terminal layout usable on phones and small windows.
     local UIScale = Instance.new("UIScale")
     UIScale.Parent = MainFrame
     local function UpdateUIScale()
@@ -247,7 +366,7 @@ function ApexLibrary:BuildGUI()
         end
         local camera = workspace.CurrentCamera
         local viewport = camera and camera.ViewportSize or Vector2.new(1280, 720)
-        local scale = math.min((viewport.X - 24) / 420, (viewport.Y - 24) / 500)
+        local scale = math.min((viewport.X - 24) / WINDOW_W, (viewport.Y - 24) / WINDOW_H)
         UIScale.Scale = math.min(math.max(scale, 0.6), 1)
     end
     UpdateUIScale()
@@ -256,7 +375,7 @@ function ApexLibrary:BuildGUI()
     end
 
     local MainStroke = Instance.new("UIStroke")
-    MainStroke.Color = Color3.fromRGB(45, 45, 58)
+    MainStroke.Color = Theme.Border
     MainStroke.Thickness = 1
     MainStroke.Parent = MainFrame
 
@@ -264,19 +383,22 @@ function ApexLibrary:BuildGUI()
     local HeaderBar = Instance.new("Frame")
     HeaderBar.Name = "HeaderBar"
     HeaderBar.Size = UDim2.new(1, 0, 0, 42)
-    HeaderBar.BackgroundColor3 = Color3.fromRGB(20, 20, 28)
+    HeaderBar.BackgroundColor3 = Theme.Header
     HeaderBar.BorderSizePixel = 0
     HeaderBar.Parent = MainFrame
 
-    local HeaderStroke = Instance.new("UIStroke")
-    HeaderStroke.Color = Color3.fromRGB(45, 45, 58)
-    HeaderStroke.Thickness = 1
-    HeaderStroke.Parent = HeaderBar
+    local HeaderDivider = Instance.new("Frame")
+    HeaderDivider.Name = "HeaderDivider"
+    HeaderDivider.Size = UDim2.new(1, 0, 0, 1)
+    HeaderDivider.Position = UDim2.new(0, 0, 1, -1)
+    HeaderDivider.BackgroundColor3 = Theme.Divider
+    HeaderDivider.BorderSizePixel = 0
+    HeaderDivider.Parent = HeaderBar
 
     local AccentBox = Instance.new("Frame")
     AccentBox.Name = "AccentBox"
-    AccentBox.Size = UDim2.new(0, 10, 0, 10)
-    AccentBox.Position = UDim2.new(0, 14, 0.5, -5)
+    AccentBox.Size = UDim2.new(0, 9, 0, 9)
+    AccentBox.Position = UDim2.new(0, 14, 0.5, -4)
     AccentBox.BackgroundColor3 = self.AccentColor
     AccentBox.BorderSizePixel = 0
     AccentBox.Parent = HeaderBar
@@ -286,101 +408,116 @@ function ApexLibrary:BuildGUI()
     end)
 
     local TitleLabel = Instance.new("TextLabel")
-    TitleLabel.Size = UDim2.new(1, -100, 1, 0)
+    TitleLabel.Size = UDim2.new(1, -112, 1, 0)
     TitleLabel.Position = UDim2.new(0, 32, 0, 0)
     TitleLabel.BackgroundTransparency = 1
-    TitleLabel.Font = Enum.Font.GothamBold
+    TitleLabel.Font = Enum.Font.RobotoMono
     TitleLabel.Text = self.Title
-    TitleLabel.TextColor3 = Color3.fromRGB(240, 245, 255)
+    TitleLabel.TextColor3 = Theme.Text
     TitleLabel.TextSize = 14
+    TitleLabel.TextStrokeColor3 = Theme.Text
+    TitleLabel.TextStrokeTransparency = 0.75
     TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+    TitleLabel.TextTruncate = Enum.TextTruncate.AtEnd
     TitleLabel.Parent = HeaderBar
 
-    -- Horizontal Scrolling Tab Bar Area
+    local LuaBadge = Instance.new("TextLabel")
+    LuaBadge.Name = "LuaBadge"
+    LuaBadge.Size = UDim2.new(0, 37, 0, 20)
+    LuaBadge.Position = UDim2.new(1, -50, 0.5, -10)
+    LuaBadge.BackgroundColor3 = Theme.Input
+    LuaBadge.BorderSizePixel = 0
+    LuaBadge.Font = Enum.Font.RobotoMono
+    LuaBadge.Text = "LUAU"
+    LuaBadge.TextColor3 = Theme.Muted
+    LuaBadge.TextSize = 10
+    LuaBadge.Parent = HeaderBar
+
+    -- Equal-width tab bar. The first tab is created by the caller.
     local TabBar = Instance.new("ScrollingFrame")
     TabBar.Name = "TabBar"
-    TabBar.Size = UDim2.new(1, 0, 0, 36)
+    TabBar.Size = UDim2.new(1, 0, 0, 38)
     TabBar.Position = UDim2.new(0, 0, 0, 42)
-    TabBar.BackgroundColor3 = Color3.fromRGB(20, 20, 28)
+    TabBar.BackgroundColor3 = Theme.TabBar
     TabBar.BorderSizePixel = 0
     TabBar.CanvasSize = UDim2.new(0, 0, 0, 0)
-    TabBar.AutomaticCanvasSize = Enum.AutomaticSize.X
+    TabBar.AutomaticCanvasSize = Enum.AutomaticSize.None
     TabBar.ScrollingDirection = Enum.ScrollingDirection.X
-    TabBar.ScrollBarThickness = 2
-    TabBar.ScrollBarImageColor3 = Color3.fromRGB(50, 60, 75)
+    TabBar.ScrollingEnabled = false
+    TabBar.ScrollBarThickness = 0
     TabBar.Parent = MainFrame
 
-    local TabListLayout = Instance.new("UIListLayout", TabBar)
-    TabListLayout.FillDirection = Enum.FillDirection.Horizontal
-    TabListLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    TabListLayout.Padding = UDim.new(0, 0)
-
-    local TabStroke = Instance.new("UIStroke")
-    TabStroke.Color = Color3.fromRGB(45, 45, 58)
-    TabStroke.Thickness = 1
-    TabStroke.Parent = TabBar
+    local TabDivider = Instance.new("Frame")
+    TabDivider.Name = "TabDivider"
+    TabDivider.Size = UDim2.new(1, 0, 0, 1)
+    TabDivider.Position = UDim2.new(0, 0, 0, 80)
+    TabDivider.BackgroundColor3 = Theme.Divider
+    TabDivider.BorderSizePixel = 0
+    TabDivider.Parent = MainFrame
 
     -- Section Title Header
     local SectionHeader = Instance.new("TextLabel")
-    SectionHeader.Size = UDim2.new(1, -32, 0, 24)
-    SectionHeader.Position = UDim2.new(0, 16, 0, 92)
+    SectionHeader.Size = UDim2.new(1, -36, 0, 14)
+    SectionHeader.Position = UDim2.new(0, 18, 0, 97)
     SectionHeader.BackgroundTransparency = 1
-    SectionHeader.Font = Enum.Font.GothamBold
-    SectionHeader.Text = "GENERAL"
-    SectionHeader.TextColor3 = Color3.fromRGB(150, 150, 165)
-    SectionHeader.TextSize = 12
+    SectionHeader.Font = Enum.Font.RobotoMono
+    SectionHeader.Text = "INTERFACE PREFERENCES"
+    SectionHeader.TextColor3 = Theme.Section
+    SectionHeader.TextSize = 10
     SectionHeader.TextXAlignment = Enum.TextXAlignment.Left
     SectionHeader.Parent = MainFrame
 
-    -- Footer & Kill Switch
+    -- Footer
     local FooterBar = Instance.new("Frame")
-    FooterBar.Size = UDim2.new(1, 0, 0, 32)
-    FooterBar.Position = UDim2.new(0, 0, 1, -32)
-    FooterBar.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+    FooterBar.Name = "FooterBar"
+    FooterBar.Size = UDim2.new(1, 0, 0, 30)
+    FooterBar.Position = UDim2.new(0, 0, 1, -30)
+    FooterBar.BackgroundColor3 = Theme.Footer
     FooterBar.BorderSizePixel = 0
     FooterBar.Parent = MainFrame
 
-    local StatusText = Instance.new("TextLabel")
-    StatusText.Size = UDim2.new(0.5, -16, 1, 0)
-    StatusText.Position = UDim2.new(0, 16, 0, 0)
-    StatusText.BackgroundTransparency = 1
-    StatusText.Font = Enum.Font.GothamMedium
-    StatusText.Text = "STATUS: ACTIVE"
-    StatusText.TextColor3 = Color3.fromRGB(120, 135, 155)
-    StatusText.TextSize = 11
-    StatusText.TextXAlignment = Enum.TextXAlignment.Left
-    StatusText.Parent = FooterBar
+    local FooterDivider = Instance.new("Frame")
+    FooterDivider.Name = "FooterDivider"
+    FooterDivider.Size = UDim2.new(1, 0, 0, 1)
+    FooterDivider.Position = UDim2.new(0, 0, 0, 0)
+    FooterDivider.BackgroundColor3 = Theme.Divider
+    FooterDivider.BorderSizePixel = 0
+    FooterDivider.Parent = FooterBar
 
-    local KillButton = Instance.new("TextButton")
-    KillButton.Size = UDim2.new(1, -32, 0, 34)
-    KillButton.Position = UDim2.new(0, 16, 1, -74)
-    KillButton.BackgroundColor3 = Color3.fromRGB(45, 20, 25)
-    KillButton.AutoButtonColor = false
-    KillButton.Font = Enum.Font.GothamBold
-    KillButton.Text = "UNLOAD LIBRARY"
-    KillButton.TextColor3 = Color3.fromRGB(255, 80, 80)
-    KillButton.TextSize = 12
-    KillButton.Parent = MainFrame
+    local StatusPrefix = Instance.new("TextLabel")
+    StatusPrefix.Size = UDim2.new(0, 48, 1, 0)
+    StatusPrefix.Position = UDim2.new(0, 13, 0, 0)
+    StatusPrefix.BackgroundTransparency = 1
+    StatusPrefix.Font = Enum.Font.RobotoMono
+    StatusPrefix.Text = "STATUS:"
+    StatusPrefix.TextColor3 = Theme.Muted
+    StatusPrefix.TextSize = 10
+    StatusPrefix.TextXAlignment = Enum.TextXAlignment.Left
+    StatusPrefix.Parent = FooterBar
 
-    local KillCorner = Instance.new("UICorner")
-    KillCorner.CornerRadius = UDim.new(0, 3)
-    KillCorner.Parent = KillButton
+    local StatusValue = Instance.new("TextLabel")
+    StatusValue.Size = UDim2.new(0, 100, 1, 0)
+    StatusValue.Position = UDim2.new(0, 60, 0, 0)
+    StatusValue.BackgroundTransparency = 1
+    StatusValue.Font = Enum.Font.RobotoMono
+    StatusValue.Text = self.StatusText
+    StatusValue.TextColor3 = Theme.Muted
+    StatusValue.TextSize = 10
+    StatusValue.TextXAlignment = Enum.TextXAlignment.Left
+    StatusValue.Parent = FooterBar
+    self.StatusValueLabel = StatusValue
 
-    KillButton.Activated:Connect(function()
-        if self.IsUnloaded then
-            return
-        end
-        self.IsUnloaded = true
-        for _, callback in ipairs(self.UnloadCallbacks) do
-            pcall(callback)
-        end
-        self:CloseColorPopups()
-        ScreenGui:Destroy()
-        local mobile = PlayerGui:FindFirstChild("ApexMobileButtonGui")
-        if mobile then
-            mobile:Destroy()
-        end
-    end)
+    local BrandLabel = Instance.new("TextLabel")
+    BrandLabel.Size = UDim2.new(0, 160, 1, 0)
+    BrandLabel.AnchorPoint = Vector2.new(1, 0)
+    BrandLabel.Position = UDim2.new(1, -13, 0, 0)
+    BrandLabel.BackgroundTransparency = 1
+    BrandLabel.Font = Enum.Font.RobotoMono
+    BrandLabel.Text = self.BrandText
+    BrandLabel.TextColor3 = Theme.Muted
+    BrandLabel.TextSize = 10
+    BrandLabel.TextXAlignment = Enum.TextXAlignment.Right
+    BrandLabel.Parent = FooterBar
 
     -- Draggable Window Logic
     local dragging, dragStart, startPos = false, nil, nil
@@ -442,7 +579,7 @@ function ApexLibrary:BuildGUI()
             MainFrame.GroupTransparency = 1
 
             local tween = TweenService:Create(MainFrame, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-                Size = UDim2.new(0, 420, 0, 500),
+                Size = UDim2.new(0, WINDOW_W, 0, WINDOW_H),
                 Position = UDim2.new(0.5, 0, 0.5, 0),
                 GroupTransparency = 0
             })
@@ -483,7 +620,7 @@ function ApexLibrary:BuildGUI()
         end)
     end
 
-    -- Mobile T-Rex Claw Button Setup
+    -- Mobile T-Rex Claw Button Setup. This is the only rounded element.
     if UserInputService.TouchEnabled then
         local MobileScreenGui = Instance.new("ScreenGui")
         MobileScreenGui.Name = "ApexMobileButtonGui"
@@ -496,7 +633,7 @@ function ApexLibrary:BuildGUI()
         MobileButton.Name = "MobileClawToggle"
         MobileButton.Size = UDim2.new(0, 54, 0, 54)
         MobileButton.Position = self.LoadedButtonPos
-        MobileButton.BackgroundColor3 = Color3.fromRGB(20, 20, 28)
+        MobileButton.BackgroundColor3 = Theme.Input
         MobileButton.AutoButtonColor = false
         MobileButton.Text = ""
         MobileButton.Parent = MobileScreenGui
@@ -595,34 +732,36 @@ local function CreateColorPopup(parentLib, name, defaultColor, callback, preview
     Popup.Name = "ColorPopup_" .. tostring(name)
     Popup.Size = UDim2.new(0, 260, 0, 265)
     Popup.Position = UDim2.new(0.5, -130, 0.5, -132)
-    Popup.BackgroundColor3 = Color3.fromRGB(20, 20, 28)
+    Popup.BackgroundColor3 = Theme.Header
     Popup.Visible = false
     Popup.ZIndex = 60
-    Instance.new("UICorner", Popup).CornerRadius = UDim.new(0, 6)
-    Instance.new("UIStroke", Popup).Color = Color3.fromRGB(45, 45, 58)
+    local popupStroke = Instance.new("UIStroke", Popup)
+    popupStroke.Color = Theme.Border
+    popupStroke.Thickness = 1
     parentLib:RegisterColorPopup(Popup)
 
     local pTitle = Instance.new("TextLabel", Popup)
     pTitle.Size = UDim2.new(1, -48, 0, 24)
     pTitle.Position = UDim2.new(0, 12, 0, 8)
     pTitle.BackgroundTransparency = 1
-    pTitle.Font = Enum.Font.GothamBold
+    pTitle.Font = Enum.Font.RobotoMono
     pTitle.Text = "PALETTE // " .. tostring(name)
-    pTitle.TextColor3 = Color3.fromRGB(240, 245, 255)
-    pTitle.TextSize = 11
+    pTitle.TextColor3 = Theme.Text
+    pTitle.TextSize = 10
     pTitle.TextXAlignment = Enum.TextXAlignment.Left
 
     local CloseBtn = Instance.new("TextButton", Popup)
     CloseBtn.Size = UDim2.new(0, 20, 0, 20)
     CloseBtn.Position = UDim2.new(1, -28, 0, 8)
-    CloseBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+    CloseBtn.BackgroundColor3 = Theme.Input
     CloseBtn.AutoButtonColor = false
-    CloseBtn.Font = Enum.Font.GothamBold
+    CloseBtn.Font = Enum.Font.RobotoMono
     CloseBtn.Text = "X"
-    CloseBtn.TextColor3 = Color3.fromRGB(180, 180, 195)
+    CloseBtn.TextColor3 = Theme.Muted
     CloseBtn.TextSize = 11
-    Instance.new("UICorner", CloseBtn).CornerRadius = UDim.new(0, 4)
-    Instance.new("UIStroke", CloseBtn).Color = Color3.fromRGB(45, 45, 58)
+    local closeStroke = Instance.new("UIStroke", CloseBtn)
+    closeStroke.Color = Theme.Border
+    closeStroke.Thickness = 1
 
     local SVBox = Instance.new("TextButton", Popup)
     SVBox.Size = UDim2.new(1, -24, 0, 100)
@@ -630,13 +769,11 @@ local function CreateColorPopup(parentLib, name, defaultColor, callback, preview
     SVBox.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
     SVBox.AutoButtonColor = false
     SVBox.Text = ""
-    Instance.new("UICorner", SVBox).CornerRadius = UDim.new(0, 4)
 
     local WhiteOverlay = Instance.new("Frame", SVBox)
     WhiteOverlay.Size = UDim2.new(1, 0, 1, 0)
     WhiteOverlay.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
     WhiteOverlay.BorderSizePixel = 0
-    Instance.new("UICorner", WhiteOverlay).CornerRadius = UDim.new(0, 4)
     local whiteGradient = Instance.new("UIGradient", WhiteOverlay)
     whiteGradient.Transparency = NumberSequence.new({
         NumberSequenceKeypoint.new(0, 0),
@@ -647,7 +784,6 @@ local function CreateColorPopup(parentLib, name, defaultColor, callback, preview
     BlackOverlay.Size = UDim2.new(1, 0, 1, 0)
     BlackOverlay.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
     BlackOverlay.BorderSizePixel = 0
-    Instance.new("UICorner", BlackOverlay).CornerRadius = UDim.new(0, 4)
     local blackGradient = Instance.new("UIGradient", BlackOverlay)
     blackGradient.Rotation = 90
     blackGradient.Transparency = NumberSequence.new({
@@ -660,7 +796,6 @@ local function CreateColorPopup(parentLib, name, defaultColor, callback, preview
     SVHandle.AnchorPoint = Vector2.new(0.5, 0.5)
     SVHandle.Position = UDim2.new(1, 0, 0, 0)
     SVHandle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-    Instance.new("UICorner", SVHandle).CornerRadius = UDim.new(1, 0)
     Instance.new("UIStroke", SVHandle).Color = Color3.fromRGB(0, 0, 0)
 
     local HueBar = Instance.new("TextButton", Popup)
@@ -669,7 +804,6 @@ local function CreateColorPopup(parentLib, name, defaultColor, callback, preview
     HueBar.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
     HueBar.AutoButtonColor = false
     HueBar.Text = ""
-    Instance.new("UICorner", HueBar).CornerRadius = UDim.new(1, 0)
 
     local hueGradient = Instance.new("UIGradient", HueBar)
     hueGradient.Color = ColorSequence.new({
@@ -687,7 +821,6 @@ local function CreateColorPopup(parentLib, name, defaultColor, callback, preview
     HueHandle.AnchorPoint = Vector2.new(0.5, 0.5)
     HueHandle.Position = UDim2.new(0, 0, 0.5, 0)
     HueHandle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-    Instance.new("UICorner", HueHandle).CornerRadius = UDim.new(0, 2)
     Instance.new("UIStroke", HueHandle).Color = Color3.fromRGB(0, 0, 0)
 
     local function createRGBInput(labelName, posX)
@@ -695,22 +828,24 @@ local function CreateColorPopup(parentLib, name, defaultColor, callback, preview
         label.Size = UDim2.new(0, 72, 0, 14)
         label.Position = UDim2.new(0, posX, 0, 164)
         label.BackgroundTransparency = 1
-        label.Font = Enum.Font.GothamMedium
+        label.Font = Enum.Font.RobotoMono
         label.Text = labelName
-        label.TextColor3 = Color3.fromRGB(150, 150, 165)
+        label.TextColor3 = Theme.Section
         label.TextSize = 10
         label.TextXAlignment = Enum.TextXAlignment.Left
 
         local box = Instance.new("TextBox", Popup)
         box.Size = UDim2.new(0, 72, 0, 24)
         box.Position = UDim2.new(0, posX, 0, 180)
-        box.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
-        box.Font = Enum.Font.GothamMedium
+        box.BackgroundColor3 = Theme.Input
+        box.BorderSizePixel = 0
+        box.Font = Enum.Font.RobotoMono
         box.Text = "255"
-        box.TextColor3 = Color3.fromRGB(240, 245, 255)
+        box.TextColor3 = Theme.Text
         box.TextSize = 12
-        Instance.new("UICorner", box).CornerRadius = UDim.new(0, 4)
-        Instance.new("UIStroke", box).Color = Color3.fromRGB(45, 45, 58)
+        local boxStroke = Instance.new("UIStroke", box)
+        boxStroke.Color = Theme.Border
+        boxStroke.Thickness = 1
         return box
     end
 
@@ -721,15 +856,15 @@ local function CreateColorPopup(parentLib, name, defaultColor, callback, preview
     local ApplyBtn = Instance.new("TextButton", Popup)
     ApplyBtn.Size = UDim2.new(1, -24, 0, 32)
     ApplyBtn.Position = UDim2.new(0, 12, 0, 214)
-    ApplyBtn.BackgroundColor3 = Color3.fromRGB(25, 25, 33)
+    ApplyBtn.BackgroundColor3 = Theme.Input
     ApplyBtn.AutoButtonColor = false
-    ApplyBtn.Font = Enum.Font.GothamBold
+    ApplyBtn.Font = Enum.Font.RobotoMono
     ApplyBtn.Text = "APPLY COLOR"
     ApplyBtn.TextColor3 = parentLib.AccentColor
-    ApplyBtn.TextSize = 12
-    Instance.new("UICorner", ApplyBtn).CornerRadius = UDim.new(0, 4)
+    ApplyBtn.TextSize = 11
     local applyStroke = Instance.new("UIStroke", ApplyBtn)
     applyStroke.Color = parentLib.AccentColor
+    applyStroke.Thickness = 1
 
     parentLib:RegisterAccentListener(function(col)
         ApplyBtn.TextColor3 = col
@@ -894,43 +1029,97 @@ local function CreateColorPopup(parentLib, name, defaultColor, callback, preview
     return API
 end
 
+function ApexLibrary:UpdateTabSizes()
+    local count = math.max(#self.TabButtonsList, 1)
+    for index, entry in ipairs(self.TabButtonsList) do
+        entry.Button.Position = UDim2.new((index - 1) / count, 0, 0, 0)
+        entry.Button.Size = UDim2.new(1 / count, 0, 1, 0)
+        entry.Button.TextSize = count >= 4 and 10 or 12
+    end
+end
+
+function ApexLibrary:ActivateTab(entry, silent)
+    if self.IsUnloaded or not entry then
+        return
+    end
+
+    for _, tab in ipairs(self.TabButtonsList) do
+        tab.Button.BackgroundColor3 = Theme.TabBar
+        tab.Button.TextColor3 = Theme.Muted
+        tab.Line.Visible = false
+        tab.Container.Visible = false
+        tab.Container.Size = UDim2.new(1, -36, 0, self.ContentFullHeight)
+        if tab.KillButton then
+            tab.KillButton.Visible = false
+        end
+    end
+
+    entry.Button.BackgroundColor3 = Theme.TabActive
+    entry.Button.TextColor3 = Theme.Text
+    entry.Line.BackgroundColor3 = self.AccentColor
+    entry.Line.Visible = true
+    entry.Container.Visible = true
+    if entry.KillButton then
+        entry.KillButton.Visible = true
+        entry.Container.Size = UDim2.new(1, -36, 0, entry.KillContentHeight or self.ContentKillHeight)
+    end
+    self.SectionHeader.Text = entry.SectionTitle
+    self.ActiveTabName = entry.Name
+    self:CloseColorPopups()
+    if not silent then
+        self:PlayUISound()
+    end
+end
+
+function ApexLibrary:SelectTab(tabName, silent)
+    for _, entry in ipairs(self.TabButtonsList or {}) do
+        if entry.Name == tabName then
+            self:ActivateTab(entry, silent)
+            return true
+        end
+    end
+    return false
+end
+
 function ApexLibrary:CreateTab(tabName, sectionTitle)
     local parentLib = self
 
     local container = Instance.new("ScrollingFrame")
-    container.Size = UDim2.new(1, -32, 0, 260)
-    container.Position = UDim2.new(0, 16, 0, 122)
+    container.Size = UDim2.new(1, -36, 0, self.ContentFullHeight)
+    container.Position = UDim2.new(0, 18, 0, 141)
     container.BackgroundTransparency = 1
     container.BorderSizePixel = 0
     container.CanvasSize = UDim2.new(0, 0, 0, 0)
     container.AutomaticCanvasSize = Enum.AutomaticSize.Y
     container.ScrollBarThickness = 2
-    container.ScrollBarImageColor3 = Color3.fromRGB(50, 60, 75)
-    container.Visible = (self.TabCount == 0)
+    container.ScrollBarImageColor3 = Theme.Border
+    container.Visible = false
     container.Parent = self.MainFrame
 
     local layout = Instance.new("UIListLayout")
     layout.SortOrder = Enum.SortOrder.LayoutOrder
-    layout.Padding = UDim.new(0, 10)
+    layout.Padding = UDim.new(0, 14)
     layout.Parent = container
 
     local button = Instance.new("TextButton")
     button.Size = UDim2.new(0, 120, 1, 0)
-    button.BackgroundColor3 = (self.TabCount == 0) and Color3.fromRGB(30, 30, 40) or Color3.fromRGB(20, 20, 28)
+    button.BackgroundColor3 = Theme.TabBar
     button.BorderSizePixel = 0
-    button.Font = Enum.Font.GothamMedium
+    button.Font = Enum.Font.RobotoMono
     button.Text = tabName
-    button.TextColor3 = (self.TabCount == 0) and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(150, 150, 165)
-    button.TextSize = 11
-    button.LayoutOrder = self.TabCount
+    button.TextColor3 = Theme.Muted
+    button.TextSize = 12
+    button.TextStrokeColor3 = Theme.Text
+    button.TextStrokeTransparency = 0.85
+    button.AutoButtonColor = false
     button.Parent = self.TabBar
 
     local activeLine = Instance.new("Frame")
     activeLine.Size = UDim2.new(1, 0, 0, 2)
-    activeLine.Position = UDim2.new(0, 0, 0, 0)
+    activeLine.Position = UDim2.new(0, 0, 1, -2)
     activeLine.BackgroundColor3 = parentLib.AccentColor
     activeLine.BorderSizePixel = 0
-    activeLine.Visible = (self.TabCount == 0)
+    activeLine.Visible = false
     activeLine.Parent = button
 
     parentLib:RegisterAccentListener(function(col)
@@ -939,36 +1128,28 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         end
     end)
 
-    local sectionHeader = self.SectionHeader
-    button.Activated:Connect(function()
-        for _, tab in pairs(parentLib.TabButtonsList) do
-            tab.Button.BackgroundColor3 = Color3.fromRGB(20, 20, 28)
-            tab.Button.TextColor3 = Color3.fromRGB(150, 150, 165)
-            tab.Line.Visible = false
-            tab.Container.Visible = false
-        end
-        button.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
-        button.TextColor3 = Color3.fromRGB(255, 255, 255)
-        activeLine.BackgroundColor3 = parentLib.AccentColor
-        activeLine.Visible = true
-        container.Visible = true
-        sectionHeader.Text = sectionTitle or "GENERAL"
-        parentLib:CloseColorPopups()
-    end)
-
-    table.insert(self.TabButtonsList, {
+    local entry = {
+        Name = tabName,
+        SectionTitle = sectionTitle or "GENERAL",
         Button = button,
         Line = activeLine,
-        Container = container
-    })
+        Container = container,
+        KillButton = nil,
+    }
+
+    table.insert(self.TabButtonsList, entry)
+    self.TabCount = self.TabCount + 1
+    self:UpdateTabSizes()
+
+    button.Activated:Connect(function()
+        parentLib:ActivateTab(entry)
+    end)
 
     -- The first tab is selected immediately. Keep the section header in sync
     -- without requiring the user to click the tab first.
-    if self.TabCount == 0 then
-        self.SectionHeader.Text = sectionTitle or "GENERAL"
+    if self.TabCount == 1 then
+        self:ActivateTab(entry, true)
     end
-
-    self.TabCount = self.TabCount + 1
 
     local TabObj = {}
 
@@ -976,15 +1157,23 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         return container
     end
 
+    function TabObj:Select()
+        parentLib:ActivateTab(entry)
+    end
+
+    function TabObj:GetName()
+        return tabName
+    end
+
     -- Section label inside a tab
     function TabObj:CreateSectionLabel(text)
         local label = Instance.new("TextLabel")
-        label.Size = UDim2.new(1, 0, 0, 22)
+        label.Size = UDim2.new(1, 0, 0, 18)
         label.BackgroundTransparency = 1
-        label.Font = Enum.Font.GothamBold
+        label.Font = Enum.Font.RobotoMono
         label.Text = tostring(text)
-        label.TextColor3 = Color3.fromRGB(150, 150, 165)
-        label.TextSize = 11
+        label.TextColor3 = Theme.Section
+        label.TextSize = 10
         label.TextXAlignment = Enum.TextXAlignment.Left
         label.Parent = container
         return label
@@ -994,53 +1183,62 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
     function TabObj:CreateButton(name, description, callback)
         local Card = Instance.new("Frame")
         Card.Size = UDim2.new(1, 0, 0, 64)
-        Card.BackgroundColor3 = Color3.fromRGB(25, 25, 33)
+        Card.BackgroundColor3 = Theme.Card
         Card.BorderSizePixel = 0
         Card.Parent = container
-        Instance.new("UICorner", Card).CornerRadius = UDim.new(0, 6)
-        Instance.new("UIStroke", Card).Color = Color3.fromRGB(45, 45, 58)
 
         local title = Instance.new("TextLabel", Card)
         title.Size = UDim2.new(1, -112, 0, 22)
-        title.Position = UDim2.new(0, 14, 0, 10)
+        title.Position = UDim2.new(0, 12, 0, 9)
         title.BackgroundTransparency = 1
-        title.Font = Enum.Font.GothamBold
+        title.Font = Enum.Font.Roboto
         title.Text = name
-        title.TextColor3 = Color3.fromRGB(240, 245, 255)
-        title.TextSize = 13
+        title.TextColor3 = Theme.Text
+        title.TextSize = 14
         title.TextXAlignment = Enum.TextXAlignment.Left
 
         local desc = Instance.new("TextLabel", Card)
         desc.Size = UDim2.new(1, -112, 0, 26)
-        desc.Position = UDim2.new(0, 14, 0, 32)
+        desc.Position = UDim2.new(0, 12, 0, 31)
         desc.BackgroundTransparency = 1
-        desc.Font = Enum.Font.GothamMedium
+        desc.Font = Enum.Font.Roboto
         desc.Text = description
-        desc.TextColor3 = Color3.fromRGB(140, 140, 155)
-        desc.TextSize = 10
+        desc.TextColor3 = Theme.Muted
+        desc.TextSize = 11
         desc.TextWrapped = true
         desc.TextXAlignment = Enum.TextXAlignment.Left
         desc.TextYAlignment = Enum.TextYAlignment.Top
 
         local action = Instance.new("TextButton", Card)
         action.Size = UDim2.new(0, 84, 0, 26)
-        action.Position = UDim2.new(1, -98, 0.5, -13)
-        action.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+        action.Position = UDim2.new(1, -96, 0.5, -13)
+        action.BackgroundColor3 = Theme.Input
         action.AutoButtonColor = false
-        action.Font = Enum.Font.GothamBold
+        action.Font = Enum.Font.RobotoMono
         action.Text = "RUN"
         action.TextColor3 = parentLib.AccentColor
         action.TextSize = 11
-        Instance.new("UICorner", action).CornerRadius = UDim.new(0, 4)
         local actionStroke = Instance.new("UIStroke", action)
         actionStroke.Color = parentLib.AccentColor
+        actionStroke.Thickness = 1
 
         parentLib:RegisterAccentListener(function(col)
             action.TextColor3 = col
             actionStroke.Color = col
         end)
 
+        action.MouseEnter:Connect(function()
+            if action.Parent then
+                action.BackgroundColor3 = Theme.TabBar
+            end
+        end)
+        action.MouseLeave:Connect(function()
+            if action.Parent then
+                action.BackgroundColor3 = Theme.Input
+            end
+        end)
         action.Activated:Connect(function()
+            parentLib:PlayUISound()
             if callback then
                 pcall(callback)
             end
@@ -1062,20 +1260,18 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         local cardHeight = height or 200
         local Card = Instance.new("Frame")
         Card.Size = UDim2.new(1, 0, 0, cardHeight)
-        Card.BackgroundColor3 = Color3.fromRGB(22, 22, 29)
+        Card.BackgroundColor3 = Theme.Card
         Card.BorderSizePixel = 0
         Card.Parent = container
-        Instance.new("UICorner", Card).CornerRadius = UDim.new(0, 6)
-        Instance.new("UIStroke", Card).Color = Color3.fromRGB(45, 45, 58)
 
         local title = Instance.new("TextLabel", Card)
-        title.Size = UDim2.new(1, -24, 0, 20)
+        title.Size = UDim2.new(1, -24, 0, 18)
         title.Position = UDim2.new(0, 12, 0, 8)
         title.BackgroundTransparency = 1
-        title.Font = Enum.Font.GothamBold
+        title.Font = Enum.Font.RobotoMono
         title.Text = titleText
         title.TextColor3 = parentLib.AccentColor
-        title.TextSize = 12
+        title.TextSize = 11
         title.TextXAlignment = Enum.TextXAlignment.Left
 
         parentLib:RegisterAccentListener(function(col)
@@ -1086,12 +1282,12 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         if description and description ~= "" then
             desc = Instance.new("TextLabel", Card)
             desc.Size = UDim2.new(1, -24, 0, 14)
-            desc.Position = UDim2.new(0, 12, 0, 27)
+            desc.Position = UDim2.new(0, 12, 0, 26)
             desc.BackgroundTransparency = 1
-            desc.Font = Enum.Font.GothamMedium
+            desc.Font = Enum.Font.Roboto
             desc.Text = description
-            desc.TextColor3 = Color3.fromRGB(135, 140, 155)
-            desc.TextSize = 10
+            desc.TextColor3 = Theme.Muted
+            desc.TextSize = 11
             desc.TextXAlignment = Enum.TextXAlignment.Left
         end
 
@@ -1103,7 +1299,7 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
         scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
         scroll.ScrollBarThickness = 2
-        scroll.ScrollBarImageColor3 = Color3.fromRGB(50, 60, 75)
+        scroll.ScrollBarImageColor3 = Theme.Border
         scroll.Parent = Card
 
         local listLayout = Instance.new("UIListLayout", scroll)
@@ -1129,9 +1325,9 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
             order = order + 1
             local label = Instance.new("TextLabel")
             label.BackgroundTransparency = 1
-            label.Font = Enum.Font.GothamMedium
+            label.Font = Enum.Font.Roboto
             label.Text = tostring(text)
-            label.TextColor3 = color or Color3.fromRGB(180, 185, 200)
+            label.TextColor3 = color or Theme.Body
             label.TextSize = 11
             label.TextWrapped = true
             label.TextXAlignment = Enum.TextXAlignment.Left
@@ -1152,25 +1348,24 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
             order = order + 1
             local button = Instance.new("TextButton")
             button.Size = UDim2.new(1, -8, 0, 28)
-            button.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+            button.BackgroundColor3 = Theme.Input
             button.AutoButtonColor = false
-            button.Font = Enum.Font.GothamMedium
+            button.Font = Enum.Font.RobotoMono
             button.Text = tostring(text)
-            button.TextColor3 = color or Color3.fromRGB(220, 225, 235)
+            button.TextColor3 = color or Theme.Text
             button.TextSize = 11
             button.LayoutOrder = order
             button.Parent = scroll
-            Instance.new("UICorner", button).CornerRadius = UDim.new(0, 4)
             local stroke = Instance.new("UIStroke", button)
-            stroke.Color = color or Color3.fromRGB(60, 60, 75)
-            stroke.Transparency = 0.45
+            stroke.Color = color or Theme.Border
+            stroke.Transparency = 0.35
 
             button.MouseEnter:Connect(function()
                 if not button.Parent then
                     return
                 end
                 TweenService:Create(button, TweenInfo.new(0.12), {
-                    BackgroundColor3 = Color3.fromRGB(40, 40, 52)
+                    BackgroundColor3 = Theme.TabBar
                 }):Play()
             end)
             button.MouseLeave:Connect(function()
@@ -1178,10 +1373,11 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
                     return
                 end
                 TweenService:Create(button, TweenInfo.new(0.12), {
-                    BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+                    BackgroundColor3 = Theme.Input
                 }):Play()
             end)
             button.Activated:Connect(function()
+                parentLib:PlayUISound()
                 if callback then
                     pcall(callback)
                 end
@@ -1210,52 +1406,52 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
     function TabObj:CreateInputCard(name, description, defaultValue, callback)
         local Card = Instance.new("Frame")
         Card.Size = UDim2.new(1, 0, 0, 64)
-        Card.BackgroundColor3 = Color3.fromRGB(25, 25, 33)
+        Card.BackgroundColor3 = Theme.Card
         Card.BorderSizePixel = 0
         Card.Parent = container
-        Instance.new("UICorner", Card).CornerRadius = UDim.new(0, 6)
-        Instance.new("UIStroke", Card).Color = Color3.fromRGB(45, 45, 58)
 
         local title = Instance.new("TextLabel", Card)
-        title.Size = UDim2.new(1, -90, 0, 22)
-        title.Position = UDim2.new(0, 14, 0, 10)
+        title.Size = UDim2.new(1, -96, 0, 20)
+        title.Position = UDim2.new(0, 12, 0, 9)
         title.BackgroundTransparency = 1
-        title.Font = Enum.Font.GothamBold
+        title.Font = Enum.Font.GothamMedium
         title.Text = name
-        title.TextColor3 = Color3.fromRGB(240, 245, 255)
+        title.TextColor3 = Theme.Text
         title.TextSize = 13
         title.TextXAlignment = Enum.TextXAlignment.Left
 
         local desc = Instance.new("TextLabel", Card)
-        desc.Size = UDim2.new(1, -90, 0, 26)
-        desc.Position = UDim2.new(0, 14, 0, 32)
+        desc.Size = UDim2.new(1, -96, 0, 26)
+        desc.Position = UDim2.new(0, 12, 0, 31)
         desc.BackgroundTransparency = 1
-        desc.Font = Enum.Font.GothamMedium
+        desc.Font = Enum.Font.Roboto
         desc.Text = description
-        desc.TextColor3 = Color3.fromRGB(140, 140, 155)
-        desc.TextSize = 10
+        desc.TextColor3 = Theme.Muted
+        desc.TextSize = 11
         desc.TextWrapped = true
         desc.TextXAlignment = Enum.TextXAlignment.Left
         desc.TextYAlignment = Enum.TextYAlignment.Top
 
         local inputBox = Instance.new("TextBox", Card)
-        inputBox.Size = UDim2.new(0, 60, 0, 26)
-        inputBox.Position = UDim2.new(1, -74, 0.5, -13)
-        inputBox.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
-        inputBox.Font = Enum.Font.GothamMedium
+        inputBox.Size = UDim2.new(0, 58, 0, 28)
+        inputBox.Position = UDim2.new(1, -70, 0.5, -14)
+        inputBox.BackgroundColor3 = Theme.Input
+        inputBox.BorderSizePixel = 0
+        inputBox.Font = Enum.Font.RobotoMono
         inputBox.Text = tostring(defaultValue or 16)
-        inputBox.TextColor3 = Color3.fromRGB(240, 245, 255)
+        inputBox.TextColor3 = Theme.Text
         inputBox.TextSize = 12
-        Instance.new("UICorner", inputBox).CornerRadius = UDim.new(0, 4)
+        inputBox.ClearTextOnFocus = false
         local inputStroke = Instance.new("UIStroke", inputBox)
-        inputStroke.Color = Color3.fromRGB(45, 45, 58)
+        inputStroke.Color = Theme.Border
+        inputStroke.Thickness = 1
 
         inputBox.Focused:Connect(function()
             inputStroke.Color = parentLib.AccentColor
         end)
 
         inputBox.FocusLost:Connect(function()
-            inputStroke.Color = Color3.fromRGB(45, 45, 58)
+            inputStroke.Color = Theme.Border
             local number = tonumber(inputBox.Text)
             if number then
                 defaultValue = number
@@ -1283,20 +1479,18 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         local cardHeight = height or 90
         local Card = Instance.new("Frame")
         Card.Size = UDim2.new(1, 0, 0, cardHeight)
-        Card.BackgroundColor3 = Color3.fromRGB(22, 22, 29)
+        Card.BackgroundColor3 = Theme.Card
         Card.BorderSizePixel = 0
         Card.Parent = container
-        Instance.new("UICorner", Card).CornerRadius = UDim.new(0, 6)
-        Instance.new("UIStroke", Card).Color = Color3.fromRGB(45, 45, 58)
 
         local titleLabel = Instance.new("TextLabel", Card)
-        titleLabel.Size = UDim2.new(1, -24, 0, 22)
+        titleLabel.Size = UDim2.new(1, -24, 0, 16)
         titleLabel.Position = UDim2.new(0, 12, 0, 8)
         titleLabel.BackgroundTransparency = 1
-        titleLabel.Font = Enum.Font.GothamBold
+        titleLabel.Font = Enum.Font.RobotoMono
         titleLabel.Text = title
         titleLabel.TextColor3 = parentLib.AccentColor
-        titleLabel.TextSize = 12
+        titleLabel.TextSize = 10
         titleLabel.TextXAlignment = Enum.TextXAlignment.Left
 
         parentLib:RegisterAccentListener(function(col)
@@ -1304,12 +1498,12 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         end)
 
         local bodyLabel = Instance.new("TextLabel", Card)
-        bodyLabel.Size = UDim2.new(1, -24, 1, -34)
-        bodyLabel.Position = UDim2.new(0, 12, 0, 28)
+        bodyLabel.Size = UDim2.new(1, -24, 1, -32)
+        bodyLabel.Position = UDim2.new(0, 12, 0, 26)
         bodyLabel.BackgroundTransparency = 1
-        bodyLabel.Font = Enum.Font.GothamMedium
+        bodyLabel.Font = Enum.Font.Roboto
         bodyLabel.Text = bodyText
-        bodyLabel.TextColor3 = Color3.fromRGB(160, 165, 180)
+        bodyLabel.TextColor3 = Theme.Body
         bodyLabel.TextSize = 11
         bodyLabel.TextWrapped = true
         bodyLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -1321,7 +1515,7 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
     -- Column Layout (Side-by-side arrangement)
     function TabObj:CreateColumnLayout(callback)
         local Row = Instance.new("Frame")
-        Row.Size = UDim2.new(1, 0, 0, 64)
+        Row.Size = UDim2.new(1, 0, 0, 56)
         Row.BackgroundTransparency = 1
         Row.BorderSizePixel = 0
         Row.Parent = container
@@ -1329,47 +1523,46 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         local rowLayout = Instance.new("UIListLayout", Row)
         rowLayout.FillDirection = Enum.FillDirection.Horizontal
         rowLayout.SortOrder = Enum.SortOrder.LayoutOrder
-        rowLayout.Padding = UDim.new(0, 8)
+        rowLayout.Padding = UDim.new(0, 10)
 
         local ColumnAPI = {}
 
         function ColumnAPI:CreateSideToggle(name, initialState, callback)
             local Card = Instance.new("Frame")
-            Card.Size = UDim2.new(0.5, -4, 1, 0)
-            Card.BackgroundColor3 = Color3.fromRGB(25, 25, 33)
+            Card.Size = UDim2.new(0.5, -5, 1, 0)
+            Card.BackgroundColor3 = Theme.Card
             Card.BorderSizePixel = 0
             Card.Parent = Row
-            Instance.new("UICorner", Card).CornerRadius = UDim.new(0, 6)
-            Instance.new("UIStroke", Card).Color = Color3.fromRGB(45, 45, 58)
 
             local title = Instance.new("TextLabel", Card)
-            title.Size = UDim2.new(1, -50, 1, 0)
+            title.Size = UDim2.new(1, -54, 1, 0)
             title.Position = UDim2.new(0, 10, 0, 0)
             title.BackgroundTransparency = 1
-            title.Font = Enum.Font.GothamBold
+            title.Font = Enum.Font.GothamMedium
             title.Text = name
-            title.TextColor3 = Color3.fromRGB(240, 245, 255)
+            title.TextColor3 = Theme.Text
             title.TextSize = 11
             title.TextXAlignment = Enum.TextXAlignment.Left
 
             local switchTrack = Instance.new("TextButton", Card)
             switchTrack.Size = UDim2.new(0, 38, 0, 20)
             switchTrack.Position = UDim2.new(1, -46, 0.5, -10)
-            switchTrack.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+            switchTrack.BackgroundColor3 = Theme.Input
             switchTrack.AutoButtonColor = false
             switchTrack.Text = ""
             local trackStroke = Instance.new("UIStroke", switchTrack)
-            trackStroke.Color = Color3.fromRGB(45, 45, 58)
+            trackStroke.Color = Theme.Border
+            trackStroke.Thickness = 1
 
             local switchThumb = Instance.new("Frame", switchTrack)
-            switchThumb.Size = UDim2.new(0, 16, 0, 14)
-            switchThumb.Position = UDim2.new(0, 2, 0.5, -7)
-            switchThumb.BackgroundColor3 = Color3.fromRGB(110, 120, 135)
+            switchThumb.Size = UDim2.new(0, 16, 0, 16)
+            switchThumb.Position = UDim2.new(0, 2, 0.5, -8)
+            switchThumb.BackgroundColor3 = Theme.Thumb
             switchThumb.BorderSizePixel = 0
 
             local enabled = initialState or false
             if enabled then
-                switchThumb.Position = UDim2.new(1, -18, 0.5, -7)
+                switchThumb.Position = UDim2.new(1, -18, 0.5, -8)
                 switchThumb.BackgroundColor3 = parentLib.AccentColor
                 trackStroke.Color = parentLib.AccentColor
             end
@@ -1383,6 +1576,7 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
 
             switchTrack.Activated:Connect(function()
                 enabled = not enabled
+                parentLib:PlayUISound()
                 applySideToggleVisual(switchThumb, trackStroke, enabled, parentLib.AccentColor)
                 if callback then
                     pcall(callback, enabled)
@@ -1410,52 +1604,51 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
     function TabObj:CreateToggle(name, description, initialState, callback)
         local Card = Instance.new("Frame")
         Card.Size = UDim2.new(1, 0, 0, 64)
-        Card.BackgroundColor3 = Color3.fromRGB(25, 25, 33)
+        Card.BackgroundColor3 = Theme.Card
         Card.BorderSizePixel = 0
         Card.Parent = container
-        Instance.new("UICorner", Card).CornerRadius = UDim.new(0, 6)
-        Instance.new("UIStroke", Card).Color = Color3.fromRGB(45, 45, 58)
 
         local title = Instance.new("TextLabel", Card)
-        title.Size = UDim2.new(1, -80, 0, 22)
-        title.Position = UDim2.new(0, 14, 0, 10)
+        title.Size = UDim2.new(1, -80, 0, 20)
+        title.Position = UDim2.new(0, 12, 0, 9)
         title.BackgroundTransparency = 1
-        title.Font = Enum.Font.GothamBold
+        title.Font = Enum.Font.GothamMedium
         title.Text = name
-        title.TextColor3 = Color3.fromRGB(240, 245, 255)
+        title.TextColor3 = Theme.Text
         title.TextSize = 13
         title.TextXAlignment = Enum.TextXAlignment.Left
 
         local desc = Instance.new("TextLabel", Card)
         desc.Size = UDim2.new(1, -80, 0, 26)
-        desc.Position = UDim2.new(0, 14, 0, 32)
+        desc.Position = UDim2.new(0, 12, 0, 31)
         desc.BackgroundTransparency = 1
-        desc.Font = Enum.Font.GothamMedium
+        desc.Font = Enum.Font.Roboto
         desc.Text = description
-        desc.TextColor3 = Color3.fromRGB(140, 140, 155)
-        desc.TextSize = 10
+        desc.TextColor3 = Theme.Muted
+        desc.TextSize = 11
         desc.TextWrapped = true
         desc.TextXAlignment = Enum.TextXAlignment.Left
         desc.TextYAlignment = Enum.TextYAlignment.Top
 
         local switchTrack = Instance.new("TextButton", Card)
-        switchTrack.Size = UDim2.new(0, 48, 0, 22)
-        switchTrack.Position = UDim2.new(1, -62, 0.5, -11)
-        switchTrack.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+        switchTrack.Size = UDim2.new(0, 40, 0, 20)
+        switchTrack.Position = UDim2.new(1, -52, 0.5, -10)
+        switchTrack.BackgroundColor3 = Theme.Input
         switchTrack.AutoButtonColor = false
         switchTrack.Text = ""
         local trackStroke = Instance.new("UIStroke", switchTrack)
-        trackStroke.Color = Color3.fromRGB(45, 45, 58)
+        trackStroke.Color = Theme.Border
+        trackStroke.Thickness = 1
 
         local switchThumb = Instance.new("Frame", switchTrack)
-        switchThumb.Size = UDim2.new(0, 18, 0, 16)
-        switchThumb.Position = UDim2.new(0, 3, 0.5, -8)
-        switchThumb.BackgroundColor3 = Color3.fromRGB(110, 120, 135)
+        switchThumb.Size = UDim2.new(0, 16, 0, 16)
+        switchThumb.Position = UDim2.new(0, 2, 0.5, -8)
+        switchThumb.BackgroundColor3 = Theme.Thumb
         switchThumb.BorderSizePixel = 0
 
         local enabled = initialState or false
         if enabled then
-            switchThumb.Position = UDim2.new(1, -21, 0.5, -8)
+            switchThumb.Position = UDim2.new(1, -18, 0.5, -8)
             switchThumb.BackgroundColor3 = parentLib.AccentColor
             trackStroke.Color = parentLib.AccentColor
         end
@@ -1476,6 +1669,7 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         end
 
         switchTrack.Activated:Connect(function()
+            parentLib:PlayUISound()
             setState(not enabled, true)
         end)
 
@@ -1493,46 +1687,52 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
     function TabObj:CreateToggleWithInput(name, description, initialState, defaultValue, toggleCallback, inputCallback)
         local Card = Instance.new("Frame")
         Card.Size = UDim2.new(1, 0, 0, 64)
-        Card.BackgroundColor3 = Color3.fromRGB(25, 25, 33)
+        Card.BackgroundColor3 = Theme.Card
         Card.BorderSizePixel = 0
         Card.Parent = container
-        Instance.new("UICorner", Card).CornerRadius = UDim.new(0, 6)
-        Instance.new("UIStroke", Card).Color = Color3.fromRGB(45, 45, 58)
 
         local title = Instance.new("TextLabel", Card)
-        title.Size = UDim2.new(1, -135, 0, 22)
-        title.Position = UDim2.new(0, 14, 0, 10)
+        title.Size = UDim2.new(1, -130, 0, 20)
+        title.Position = UDim2.new(0, 12, 0, 9)
         title.BackgroundTransparency = 1
-        title.Font = Enum.Font.GothamBold
+        title.Font = Enum.Font.GothamMedium
         title.Text = name
-        title.TextColor3 = Color3.fromRGB(240, 245, 255)
+        title.TextColor3 = Theme.Text
         title.TextSize = 13
         title.TextXAlignment = Enum.TextXAlignment.Left
 
         local desc = Instance.new("TextLabel", Card)
-        desc.Size = UDim2.new(1, -135, 0, 26)
-        desc.Position = UDim2.new(0, 14, 0, 32)
+        desc.Size = UDim2.new(1, -130, 0, 26)
+        desc.Position = UDim2.new(0, 12, 0, 31)
         desc.BackgroundTransparency = 1
-        desc.Font = Enum.Font.GothamMedium
+        desc.Font = Enum.Font.Roboto
         desc.Text = description
-        desc.TextColor3 = Color3.fromRGB(140, 140, 155)
-        desc.TextSize = 10
+        desc.TextColor3 = Theme.Muted
+        desc.TextSize = 11
         desc.TextWrapped = true
         desc.TextXAlignment = Enum.TextXAlignment.Left
         desc.TextYAlignment = Enum.TextYAlignment.Top
 
         local inputBox = Instance.new("TextBox", Card)
-        inputBox.Size = UDim2.new(0, 50, 0, 24)
-        inputBox.Position = UDim2.new(1, -118, 0.5, -12)
-        inputBox.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
-        inputBox.Font = Enum.Font.GothamMedium
+        inputBox.Size = UDim2.new(0, 50, 0, 26)
+        inputBox.Position = UDim2.new(1, -114, 0.5, -13)
+        inputBox.BackgroundColor3 = Theme.Input
+        inputBox.BorderSizePixel = 0
+        inputBox.Font = Enum.Font.RobotoMono
         inputBox.Text = tostring(defaultValue or 24)
-        inputBox.TextColor3 = Color3.fromRGB(240, 245, 255)
+        inputBox.TextColor3 = Theme.Text
         inputBox.TextSize = 12
-        Instance.new("UICorner", inputBox).CornerRadius = UDim.new(0, 4)
-        Instance.new("UIStroke", inputBox).Color = Color3.fromRGB(45, 45, 58)
+        inputBox.ClearTextOnFocus = false
+        local inputStroke = Instance.new("UIStroke", inputBox)
+        inputStroke.Color = Theme.Border
+        inputStroke.Thickness = 1
+
+        inputBox.Focused:Connect(function()
+            inputStroke.Color = parentLib.AccentColor
+        end)
 
         inputBox.FocusLost:Connect(function()
+            inputStroke.Color = Theme.Border
             local number = tonumber(inputBox.Text)
             if number then
                 defaultValue = number
@@ -1545,23 +1745,24 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         end)
 
         local switchTrack = Instance.new("TextButton", Card)
-        switchTrack.Size = UDim2.new(0, 48, 0, 22)
-        switchTrack.Position = UDim2.new(1, -62, 0.5, -11)
-        switchTrack.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+        switchTrack.Size = UDim2.new(0, 40, 0, 20)
+        switchTrack.Position = UDim2.new(1, -52, 0.5, -10)
+        switchTrack.BackgroundColor3 = Theme.Input
         switchTrack.AutoButtonColor = false
         switchTrack.Text = ""
         local trackStroke = Instance.new("UIStroke", switchTrack)
-        trackStroke.Color = Color3.fromRGB(45, 45, 58)
+        trackStroke.Color = Theme.Border
+        trackStroke.Thickness = 1
 
         local switchThumb = Instance.new("Frame", switchTrack)
-        switchThumb.Size = UDim2.new(0, 18, 0, 16)
-        switchThumb.Position = UDim2.new(0, 3, 0.5, -8)
-        switchThumb.BackgroundColor3 = Color3.fromRGB(110, 120, 135)
+        switchThumb.Size = UDim2.new(0, 16, 0, 16)
+        switchThumb.Position = UDim2.new(0, 2, 0.5, -8)
+        switchThumb.BackgroundColor3 = Theme.Thumb
         switchThumb.BorderSizePixel = 0
 
         local enabled = initialState or false
         if enabled then
-            switchThumb.Position = UDim2.new(1, -21, 0.5, -8)
+            switchThumb.Position = UDim2.new(1, -18, 0.5, -8)
             switchThumb.BackgroundColor3 = parentLib.AccentColor
             trackStroke.Color = parentLib.AccentColor
         end
@@ -1582,6 +1783,7 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         end
 
         switchTrack.Activated:Connect(function()
+            parentLib:PlayUISound()
             setState(not enabled, true)
         end)
 
@@ -1606,63 +1808,63 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
     function TabObj:CreateToggleWithColor(name, description, initialState, defaultColor, toggleCallback, colorCallback)
         local Card = Instance.new("Frame")
         Card.Size = UDim2.new(1, 0, 0, 64)
-        Card.BackgroundColor3 = Color3.fromRGB(25, 25, 33)
+        Card.BackgroundColor3 = Theme.Card
         Card.BorderSizePixel = 0
         Card.Parent = container
-        Instance.new("UICorner", Card).CornerRadius = UDim.new(0, 6)
-        Instance.new("UIStroke", Card).Color = Color3.fromRGB(45, 45, 58)
 
         local title = Instance.new("TextLabel", Card)
-        title.Size = UDim2.new(1, -120, 0, 22)
-        title.Position = UDim2.new(0, 14, 0, 10)
+        title.Size = UDim2.new(1, -120, 0, 20)
+        title.Position = UDim2.new(0, 12, 0, 9)
         title.BackgroundTransparency = 1
-        title.Font = Enum.Font.GothamBold
+        title.Font = Enum.Font.GothamMedium
         title.Text = name
-        title.TextColor3 = Color3.fromRGB(240, 245, 255)
+        title.TextColor3 = Theme.Text
         title.TextSize = 13
         title.TextXAlignment = Enum.TextXAlignment.Left
 
         local desc = Instance.new("TextLabel", Card)
         desc.Size = UDim2.new(1, -120, 0, 26)
-        desc.Position = UDim2.new(0, 14, 0, 32)
+        desc.Position = UDim2.new(0, 12, 0, 31)
         desc.BackgroundTransparency = 1
-        desc.Font = Enum.Font.GothamMedium
+        desc.Font = Enum.Font.Roboto
         desc.Text = description
-        desc.TextColor3 = Color3.fromRGB(140, 140, 155)
-        desc.TextSize = 10
+        desc.TextColor3 = Theme.Muted
+        desc.TextSize = 11
         desc.TextWrapped = true
         desc.TextXAlignment = Enum.TextXAlignment.Left
         desc.TextYAlignment = Enum.TextYAlignment.Top
 
         local paletteButton = Instance.new("TextButton", Card)
-        paletteButton.Size = UDim2.new(0, 30, 0, 22)
-        paletteButton.Position = UDim2.new(1, -100, 0.5, -11)
+        paletteButton.Size = UDim2.new(0, 28, 0, 22)
+        paletteButton.Position = UDim2.new(1, -96, 0.5, -11)
         paletteButton.BackgroundColor3 = defaultColor or parentLib.AccentColor
         paletteButton.AutoButtonColor = false
         paletteButton.Text = ""
-        Instance.new("UICorner", paletteButton).CornerRadius = UDim.new(0, 4)
-        Instance.new("UIStroke", paletteButton).Color = Color3.fromRGB(255, 255, 255)
+        local paletteStroke = Instance.new("UIStroke", paletteButton)
+        paletteStroke.Color = Theme.Text
+        paletteStroke.Thickness = 1
 
         local colorAPI = CreateColorPopup(parentLib, name, defaultColor, colorCallback, paletteButton)
 
         local switchTrack = Instance.new("TextButton", Card)
-        switchTrack.Size = UDim2.new(0, 48, 0, 22)
-        switchTrack.Position = UDim2.new(1, -62, 0.5, -11)
-        switchTrack.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+        switchTrack.Size = UDim2.new(0, 40, 0, 20)
+        switchTrack.Position = UDim2.new(1, -52, 0.5, -10)
+        switchTrack.BackgroundColor3 = Theme.Input
         switchTrack.AutoButtonColor = false
         switchTrack.Text = ""
         local trackStroke = Instance.new("UIStroke", switchTrack)
-        trackStroke.Color = Color3.fromRGB(45, 45, 58)
+        trackStroke.Color = Theme.Border
+        trackStroke.Thickness = 1
 
         local switchThumb = Instance.new("Frame", switchTrack)
-        switchThumb.Size = UDim2.new(0, 18, 0, 16)
-        switchThumb.Position = UDim2.new(0, 3, 0.5, -8)
-        switchThumb.BackgroundColor3 = Color3.fromRGB(110, 120, 135)
+        switchThumb.Size = UDim2.new(0, 16, 0, 16)
+        switchThumb.Position = UDim2.new(0, 2, 0.5, -8)
+        switchThumb.BackgroundColor3 = Theme.Thumb
         switchThumb.BorderSizePixel = 0
 
         local enabled = initialState or false
         if enabled then
-            switchThumb.Position = UDim2.new(1, -21, 0.5, -8)
+            switchThumb.Position = UDim2.new(1, -18, 0.5, -8)
             switchThumb.BackgroundColor3 = parentLib.AccentColor
             trackStroke.Color = parentLib.AccentColor
         end
@@ -1683,6 +1885,7 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         end
 
         switchTrack.Activated:Connect(function()
+            parentLib:PlayUISound()
             setState(not enabled, true)
         end)
 
@@ -1706,91 +1909,92 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
     function TabObj:CreateColorPicker(name, description, defaultColor, callback)
         local Card = Instance.new("Frame")
         Card.Size = UDim2.new(1, 0, 0, 64)
-        Card.BackgroundColor3 = Color3.fromRGB(25, 25, 33)
+        Card.BackgroundColor3 = Theme.Card
         Card.BorderSizePixel = 0
         Card.Parent = container
-        Instance.new("UICorner", Card).CornerRadius = UDim.new(0, 6)
-        Instance.new("UIStroke", Card).Color = Color3.fromRGB(45, 45, 58)
 
         local title = Instance.new("TextLabel", Card)
-        title.Size = UDim2.new(1, -80, 0, 22)
-        title.Position = UDim2.new(0, 14, 0, 10)
+        title.Size = UDim2.new(1, -80, 0, 20)
+        title.Position = UDim2.new(0, 12, 0, 9)
         title.BackgroundTransparency = 1
-        title.Font = Enum.Font.GothamBold
+        title.Font = Enum.Font.GothamMedium
         title.Text = name
-        title.TextColor3 = Color3.fromRGB(240, 245, 255)
+        title.TextColor3 = Theme.Text
         title.TextSize = 13
         title.TextXAlignment = Enum.TextXAlignment.Left
 
         local desc = Instance.new("TextLabel", Card)
         desc.Size = UDim2.new(1, -80, 0, 26)
-        desc.Position = UDim2.new(0, 14, 0, 32)
+        desc.Position = UDim2.new(0, 12, 0, 31)
         desc.BackgroundTransparency = 1
-        desc.Font = Enum.Font.GothamMedium
+        desc.Font = Enum.Font.Roboto
         desc.Text = description
-        desc.TextColor3 = Color3.fromRGB(140, 140, 155)
-        desc.TextSize = 10
+        desc.TextColor3 = Theme.Muted
+        desc.TextSize = 11
         desc.TextWrapped = true
         desc.TextXAlignment = Enum.TextXAlignment.Left
         desc.TextYAlignment = Enum.TextYAlignment.Top
 
         local paletteButton = Instance.new("TextButton", Card)
-        paletteButton.Size = UDim2.new(0, 36, 0, 26)
-        paletteButton.Position = UDim2.new(1, -50, 0.5, -13)
+        paletteButton.Size = UDim2.new(0, 34, 0, 26)
+        paletteButton.Position = UDim2.new(1, -46, 0.5, -13)
         paletteButton.BackgroundColor3 = defaultColor or parentLib.AccentColor
         paletteButton.AutoButtonColor = false
         paletteButton.Text = ""
-        Instance.new("UICorner", paletteButton).CornerRadius = UDim.new(0, 4)
-        Instance.new("UIStroke", paletteButton).Color = Color3.fromRGB(255, 255, 255)
+        local paletteStroke = Instance.new("UIStroke", paletteButton)
+        paletteStroke.Color = Theme.Text
+        paletteStroke.Thickness = 1
 
         return CreateColorPopup(parentLib, name, defaultColor, callback, paletteButton)
     end
 
-    -- 5. Keybind Card Component (PC)
+    -- 5. Keybind Card Component (PC) -- matches the reference layout exactly.
     function TabObj:CreateKeybindCard()
         local Card = Instance.new("Frame")
-        Card.Size = UDim2.new(1, 0, 0, 64)
-        Card.BackgroundColor3 = Color3.fromRGB(25, 25, 33)
+        Card.Name = "KeybindCard"
+        Card.Size = UDim2.new(1, 0, 0, 76)
+        Card.BackgroundColor3 = Theme.Card
         Card.BorderSizePixel = 0
         Card.Parent = container
-        Instance.new("UICorner", Card).CornerRadius = UDim.new(0, 6)
-        Instance.new("UIStroke", Card).Color = Color3.fromRGB(45, 45, 58)
 
         local title = Instance.new("TextLabel", Card)
-        title.Size = UDim2.new(1, -120, 0, 22)
-        title.Position = UDim2.new(0, 14, 0, 10)
+        title.Size = UDim2.new(1, -24, 0, 20)
+        title.Position = UDim2.new(0, 12, 0, 12)
         title.BackgroundTransparency = 1
-        title.Font = Enum.Font.GothamBold
-        title.Text = "TOGGLE_GUI_KEYBIND"
-        title.TextColor3 = Color3.fromRGB(240, 245, 255)
-        title.TextSize = 13
+        title.Font = Enum.Font.GothamMedium
+        title.Text = "Keybind Activation"
+        title.TextColor3 = Theme.Text
+        title.TextSize = 14
         title.TextXAlignment = Enum.TextXAlignment.Left
 
-        local desc = Instance.new("TextLabel", Card)
-        desc.Size = UDim2.new(1, -120, 0, 18)
-        desc.Position = UDim2.new(0, 14, 0, 32)
-        desc.BackgroundTransparency = 1
-        desc.Font = Enum.Font.GothamMedium
-        desc.Text = "PC key used to hide/show UI"
-        desc.TextColor3 = Color3.fromRGB(140, 140, 155)
-        desc.TextSize = 11
-        desc.TextXAlignment = Enum.TextXAlignment.Left
-
         local keybindButton = Instance.new("TextButton", Card)
-        keybindButton.Size = UDim2.new(0, 96, 0, 26)
-        keybindButton.Position = UDim2.new(1, -110, 0.5, -13)
-        keybindButton.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+        keybindButton.Name = "KeybindButton"
+        keybindButton.Size = UDim2.new(0, 112, 0, 26)
+        keybindButton.Position = UDim2.new(0, 12, 0, 40)
+        keybindButton.BackgroundColor3 = Theme.Input
         keybindButton.AutoButtonColor = false
-        keybindButton.Font = Enum.Font.GothamBold
+        keybindButton.Font = Enum.Font.RobotoMono
         keybindButton.Text = parentLib.CurrentHideKey.Name
         keybindButton.TextColor3 = parentLib.AccentColor
         keybindButton.TextSize = 12
-        Instance.new("UICorner", keybindButton).CornerRadius = UDim.new(0, 4)
-        Instance.new("UIStroke", keybindButton).Color = Color3.fromRGB(45, 45, 58)
+        local keyStroke = Instance.new("UIStroke", keybindButton)
+        keyStroke.Color = Theme.Border
+        keyStroke.Thickness = 1
+
+        local hint = Instance.new("TextLabel", Card)
+        hint.Size = UDim2.new(1, -148, 0, 26)
+        hint.Position = UDim2.new(0, 136, 0, 40)
+        hint.BackgroundTransparency = 1
+        hint.Font = Enum.Font.Gotham
+        hint.Text = "Press to minimize"
+        hint.TextColor3 = Theme.Muted
+        hint.TextSize = 12
+        hint.TextXAlignment = Enum.TextXAlignment.Left
 
         parentLib:RegisterAccentListener(function(col)
             if not parentLib.IsListeningForKey then
                 keybindButton.TextColor3 = col
+                keyStroke.Color = Theme.Border
             end
         end)
 
@@ -1800,9 +2004,11 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
             parentLib.IsListeningForKey = false
             keybindButton.Text = parentLib.CurrentHideKey.Name
             keybindButton.TextColor3 = parentLib.AccentColor
+            keyStroke.Color = Theme.Border
         end
 
         keybindButton.Activated:Connect(function()
+            parentLib:PlayUISound()
             if listening then
                 stopListening()
                 return
@@ -1811,6 +2017,7 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
             parentLib.IsListeningForKey = true
             keybindButton.Text = "PRESS KEY..."
             keybindButton.TextColor3 = Color3.fromRGB(255, 200, 50)
+            keyStroke.Color = Color3.fromRGB(255, 200, 50)
             -- Safety: never leave the main hide-key handler blocked forever.
             task.delay(5, function()
                 if not listening then
@@ -1847,40 +2054,179 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
             parentLib.CurrentHideKey = input.KeyCode
             keybindButton.Text = parentLib.CurrentHideKey.Name
             keybindButton.TextColor3 = parentLib.AccentColor
+            keyStroke.Color = Theme.Border
             listening = false
             parentLib.IsListeningForKey = false
             parentLib:SaveSettings()
         end)
+
+        local API = {}
+        function API:GetKey()
+            return parentLib.CurrentHideKey
+        end
+        function API:GetButton()
+            return keybindButton
+        end
+        return API
     end
 
-    -- 6. Info Card Component
-    function TabObj:CreateInfoCard(labelName, valueText)
+    -- 6. Audio Feedback Card Component
+    function TabObj:CreateAudioFeedbackCard(callback)
         local Card = Instance.new("Frame")
-        Card.Size = UDim2.new(1, 0, 0, 48)
-        Card.BackgroundColor3 = Color3.fromRGB(25, 25, 33)
+        Card.Name = "AudioFeedbackCard"
+        Card.Size = UDim2.new(1, 0, 0, 39)
+        Card.BackgroundColor3 = Theme.Card
         Card.BorderSizePixel = 0
         Card.Parent = container
-        Instance.new("UICorner", Card).CornerRadius = UDim.new(0, 6)
-        Instance.new("UIStroke", Card).Color = Color3.fromRGB(45, 45, 58)
+
+        local title = Instance.new("TextLabel", Card)
+        title.Size = UDim2.new(1, -130, 1, 0)
+        title.Position = UDim2.new(0, 12, 0, 0)
+        title.BackgroundTransparency = 1
+        title.Font = Enum.Font.GothamMedium
+        title.Text = "Audio Feedback"
+        title.TextColor3 = Theme.Text
+        title.TextSize = 13
+        title.TextXAlignment = Enum.TextXAlignment.Left
+
+        local stateButton = Instance.new("TextButton", Card)
+        stateButton.Name = "AudioStateButton"
+        stateButton.Size = UDim2.new(0, 110, 1, 0)
+        stateButton.AnchorPoint = Vector2.new(1, 0)
+        stateButton.Position = UDim2.new(1, -14, 0, 0)
+        stateButton.BackgroundTransparency = 1
+        stateButton.AutoButtonColor = false
+        stateButton.Font = Enum.Font.GothamBold
+        stateButton.TextSize = 11
+        stateButton.TextXAlignment = Enum.TextXAlignment.Right
+        stateButton.Text = parentLib.AudioEnabled and "ENABLED" or "DISABLED"
+        stateButton.TextColor3 = parentLib.AudioEnabled and Theme.Green or Theme.Muted
+
+        local function refresh(enabled)
+            if not stateButton.Parent then
+                return
+            end
+            stateButton.Text = enabled and "ENABLED" or "DISABLED"
+            stateButton.TextColor3 = enabled and Theme.Green or Theme.Muted
+        end
+
+        parentLib:RegisterAudioListener(refresh)
+
+        stateButton.Activated:Connect(function()
+            local nextState = not parentLib.AudioEnabled
+            parentLib:SetAudioEnabled(nextState, true)
+            refresh(parentLib.AudioEnabled)
+            if callback then
+                pcall(callback, parentLib.AudioEnabled)
+            end
+        end)
+
+        return stateButton
+    end
+
+    -- 7. Kill Script Button. Anchored above the footer so it matches the
+    -- reference and never scrolls with the tab content.
+    function TabObj:CreateKillButton(text, callback, contentHeight)
+        local button = Instance.new("TextButton")
+        button.Name = "KillScriptButton"
+        button.Size = UDim2.new(1, -36, 0, 36)
+        button.Position = UDim2.new(0, 18, 1, -50)
+        button.BackgroundColor3 = Theme.RedBg
+        button.BorderSizePixel = 0
+        button.AutoButtonColor = false
+        button.Text = ""
+        button.Visible = false
+        button.Parent = parentLib.MainFrame
+
+        local stroke = Instance.new("UIStroke", button)
+        stroke.Color = Theme.RedBorder
+        stroke.Thickness = 1
+
+        local icon = Instance.new("Frame")
+        icon.Name = "KillIcon"
+        icon.Size = UDim2.new(0, 14, 0, 14)
+        icon.Position = UDim2.new(0.5, -92, 0.5, -7)
+        icon.BackgroundTransparency = 1
+        icon.Parent = button
+
+        local iconStroke = Instance.new("UIStroke", icon)
+        iconStroke.Color = Theme.RedDim
+        iconStroke.Thickness = 1
+
+        local slash = Instance.new("Frame")
+        slash.Size = UDim2.new(0, 18, 0, 1)
+        slash.AnchorPoint = Vector2.new(0.5, 0.5)
+        slash.Position = UDim2.new(0.5, 0, 0.5, 0)
+        slash.Rotation = -45
+        slash.BackgroundColor3 = Theme.RedDim
+        slash.BorderSizePixel = 0
+        slash.Parent = icon
+
+        local label = Instance.new("TextLabel", button)
+        label.Size = UDim2.new(0, 200, 1, 0)
+        label.AnchorPoint = Vector2.new(0.5, 0)
+        label.Position = UDim2.new(0.5, 11, 0, 0)
+        label.BackgroundTransparency = 1
+        label.Font = Enum.Font.RobotoMono
+        label.Text = text or "KILL SCRIPT & CLEANUP"
+        label.TextColor3 = Theme.RedDim
+        label.TextSize = 13
+        label.TextXAlignment = Enum.TextXAlignment.Center
+        label.TextTruncate = Enum.TextTruncate.AtEnd
+
+        button.MouseEnter:Connect(function()
+            if button.Parent then
+                button.BackgroundColor3 = Color3.fromRGB(56, 25, 30)
+                stroke.Color = Color3.fromRGB(124, 42, 48)
+            end
+        end)
+        button.MouseLeave:Connect(function()
+            if button.Parent then
+                button.BackgroundColor3 = Theme.RedBg
+                stroke.Color = Theme.RedBorder
+            end
+        end)
+        button.Activated:Connect(function()
+            if callback then
+                pcall(callback)
+            else
+                parentLib:Unload()
+            end
+        end)
+
+        entry.KillButton = button
+        if contentHeight then
+            entry.KillContentHeight = math.max(40, math.min(parentLib.ContentKillHeight, contentHeight))
+        end
+        return button
+    end
+
+    -- 8. Info Card Component
+    function TabObj:CreateInfoCard(labelName, valueText)
+        local Card = Instance.new("Frame")
+        Card.Size = UDim2.new(1, 0, 0, 40)
+        Card.BackgroundColor3 = Theme.Card
+        Card.BorderSizePixel = 0
+        Card.Parent = container
 
         local title = Instance.new("TextLabel", Card)
         title.Size = UDim2.new(0.5, 0, 1, 0)
-        title.Position = UDim2.new(0, 14, 0, 0)
+        title.Position = UDim2.new(0, 12, 0, 0)
         title.BackgroundTransparency = 1
-        title.Font = Enum.Font.GothamBold
+        title.Font = Enum.Font.RobotoMono
         title.Text = labelName
-        title.TextColor3 = Color3.fromRGB(200, 210, 225)
-        title.TextSize = 12
+        title.TextColor3 = Theme.Section
+        title.TextSize = 10
         title.TextXAlignment = Enum.TextXAlignment.Left
 
         local value = Instance.new("TextLabel", Card)
-        value.Size = UDim2.new(0.5, -20, 1, 0)
-        value.Position = UDim2.new(0.5, 0, 0, 0)
+        value.Size = UDim2.new(0.5, -24, 1, 0)
+        value.Position = UDim2.new(0.5, 12, 0, 0)
         value.BackgroundTransparency = 1
-        value.Font = Enum.Font.GothamMedium
+        value.Font = Enum.Font.RobotoMono
         value.Text = valueText
-        value.TextColor3 = Color3.fromRGB(140, 140, 155)
-        value.TextSize = 12
+        value.TextColor3 = Theme.Muted
+        value.TextSize = 11
         value.TextXAlignment = Enum.TextXAlignment.Right
 
         local API = {}
