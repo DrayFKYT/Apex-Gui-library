@@ -114,6 +114,8 @@ end
 local ApexLibrary = {}
 ApexLibrary.__index = ApexLibrary
 ApexLibrary.Version = "APEX_SYS V3.7 PLUS"
+-- Bump this when a script depends on a layout fix that older copies lack.
+ApexLibrary.LayoutRevision = 2
 local CONFIG_VERSION = 2
 
 ApexLibrary.Theme = Theme
