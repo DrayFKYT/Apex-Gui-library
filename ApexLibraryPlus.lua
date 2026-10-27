@@ -1049,10 +1049,12 @@ function ApexLibrary:UpdateTabSizes()
             entry.Button.Position = UDim2.new(0, (index - 1) * scrollTabWidth, 0, 0)
             entry.Button.Size = UDim2.new(0, scrollTabWidth, 1, 0)
             entry.Button.TextSize = 11
+            entry.Line.Position = UDim2.new(0, 0, 1, -4)
         else
             entry.Button.Position = UDim2.new((index - 1) / count, 0, 0, 0)
             entry.Button.Size = UDim2.new(1 / count, 0, 1, 0)
             entry.Button.TextSize = count >= 4 and 10 or 12
+            entry.Line.Position = UDim2.new(0, 0, 1, -2)
         end
     end
 end
