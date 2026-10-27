@@ -2033,13 +2033,13 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         return API
     end
 
-    -- 6. Kill Script Button. Anchored above the footer so it matches the
-    -- reference and never scrolls with the tab content.
+    -- 6. Kill Script Button. Sits above the footer with a clear gap so it
+    -- never covers the status/brand row or scrolls with the tab content.
     function TabObj:CreateKillButton(text, callback, contentHeight)
         local button = Instance.new("TextButton")
         button.Name = "KillScriptButton"
         button.Size = UDim2.new(1, -36, 0, 36)
-        button.Position = UDim2.new(0, 18, 1, -50)
+        button.Position = UDim2.new(0, 18, 1, -86)
         button.BackgroundColor3 = Theme.RedBg
         button.BorderSizePixel = 0
         button.AutoButtonColor = false
