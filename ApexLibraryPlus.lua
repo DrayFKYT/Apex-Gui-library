@@ -116,7 +116,8 @@ ApexLibrary.__index = ApexLibrary
 ApexLibrary.Version = "APEX_SYS V3.7 PLUS"
 -- Bump this when a script depends on a layout fix that older copies lack.
 -- 3: overflow tab bar gains left/right navigation arrows.
-ApexLibrary.LayoutRevision = 3
+-- 4: desktop renders the fixed layout at 120% for readable terminal text.
+ApexLibrary.LayoutRevision = 4
 local CONFIG_VERSION = 2
 
 ApexLibrary.Theme = Theme
@@ -313,6 +314,10 @@ function ApexLibrary:BuildGUI()
     MainFrame.Parent = ScreenGui
 
     -- Keep the fixed terminal layout usable on phones and small windows.
+    -- Desktop renders the same layout at 120% so the small terminal text is
+    -- easier to read; touch devices keep the original 1.0 cap and fit scale.
+    local UI_SCALE_MIN = 0.6
+    local UI_SCALE_MAX = UserInputService.TouchEnabled and 1 or 1.2
     local UIScale = Instance.new("UIScale")
     UIScale.Parent = MainFrame
     local function UpdateUIScale()
@@ -322,7 +327,7 @@ function ApexLibrary:BuildGUI()
         local camera = workspace.CurrentCamera
         local viewport = camera and camera.ViewportSize or Vector2.new(1280, 720)
         local scale = math.min((viewport.X - 24) / WINDOW_W, (viewport.Y - 24) / WINDOW_H)
-        UIScale.Scale = math.min(math.max(scale, 0.6), 1)
+        UIScale.Scale = math.min(math.max(scale, UI_SCALE_MIN), UI_SCALE_MAX)
     end
     UpdateUIScale()
     if workspace.CurrentCamera then
