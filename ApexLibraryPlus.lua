@@ -132,7 +132,8 @@ ApexLibrary.Version = "APEX_SYS V3.7 PLUS"
 -- 3: overflow tab bar gains left/right navigation arrows.
 -- 4: desktop 120% whole-UI scaling (reverted in 5).
 -- 5: desktop text uses larger native sizes without scaling the window.
-ApexLibrary.LayoutRevision = 5
+-- 6: desktop card descriptions match the larger native text sizes.
+ApexLibrary.LayoutRevision = 6
 local CONFIG_VERSION = 2
 
 ApexLibrary.Theme = Theme
@@ -1317,13 +1318,13 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         title.TextXAlignment = Enum.TextXAlignment.Left
 
         local desc = Instance.new("TextLabel", Card)
-        desc.Size = UDim2.new(1, -112, 0, 26)
+        desc.Size = UDim2.new(1, -112, 0, IS_DESKTOP and 30 or 26)
         desc.Position = UDim2.new(0, 12, 0, 31)
         desc.BackgroundTransparency = 1
         desc.Font = Enum.Font.Roboto
         desc.Text = description
         desc.TextColor3 = Theme.Muted
-        desc.TextSize = 11
+        desc.TextSize = FontSize(11)
         desc.TextWrapped = true
         desc.TextXAlignment = Enum.TextXAlignment.Left
         desc.TextYAlignment = Enum.TextYAlignment.Top
@@ -1399,13 +1400,13 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         local desc
         if description and description ~= "" then
             desc = Instance.new("TextLabel", Card)
-            desc.Size = UDim2.new(1, -24, 0, 14)
+            desc.Size = UDim2.new(1, -24, 0, IS_DESKTOP and 16 or 14)
             desc.Position = UDim2.new(0, 12, 0, 26)
             desc.BackgroundTransparency = 1
             desc.Font = Enum.Font.Roboto
             desc.Text = description
             desc.TextColor3 = Theme.Muted
-            desc.TextSize = 11
+            desc.TextSize = FontSize(11)
             desc.TextXAlignment = Enum.TextXAlignment.Left
         end
 
@@ -1538,13 +1539,13 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         title.TextXAlignment = Enum.TextXAlignment.Left
 
         local desc = Instance.new("TextLabel", Card)
-        desc.Size = UDim2.new(1, -96, 0, 26)
+        desc.Size = UDim2.new(1, -96, 0, IS_DESKTOP and 30 or 26)
         desc.Position = UDim2.new(0, 12, 0, 31)
         desc.BackgroundTransparency = 1
         desc.Font = Enum.Font.Roboto
         desc.Text = description
         desc.TextColor3 = Theme.Muted
-        desc.TextSize = 11
+        desc.TextSize = FontSize(11)
         desc.TextWrapped = true
         desc.TextXAlignment = Enum.TextXAlignment.Left
         desc.TextYAlignment = Enum.TextYAlignment.Top
@@ -1735,13 +1736,13 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         title.TextXAlignment = Enum.TextXAlignment.Left
 
         local desc = Instance.new("TextLabel", Card)
-        desc.Size = UDim2.new(1, -80, 0, 26)
+        desc.Size = UDim2.new(1, -80, 0, IS_DESKTOP and 30 or 26)
         desc.Position = UDim2.new(0, 12, 0, 31)
         desc.BackgroundTransparency = 1
         desc.Font = Enum.Font.Roboto
         desc.Text = description
         desc.TextColor3 = Theme.Muted
-        desc.TextSize = 11
+        desc.TextSize = FontSize(11)
         desc.TextWrapped = true
         desc.TextXAlignment = Enum.TextXAlignment.Left
         desc.TextYAlignment = Enum.TextYAlignment.Top
@@ -1817,13 +1818,13 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         title.TextXAlignment = Enum.TextXAlignment.Left
 
         local desc = Instance.new("TextLabel", Card)
-        desc.Size = UDim2.new(1, -130, 0, 26)
+        desc.Size = UDim2.new(1, -130, 0, IS_DESKTOP and 30 or 26)
         desc.Position = UDim2.new(0, 12, 0, 31)
         desc.BackgroundTransparency = 1
         desc.Font = Enum.Font.Roboto
         desc.Text = description
         desc.TextColor3 = Theme.Muted
-        desc.TextSize = 11
+        desc.TextSize = FontSize(11)
         desc.TextWrapped = true
         desc.TextXAlignment = Enum.TextXAlignment.Left
         desc.TextYAlignment = Enum.TextYAlignment.Top
@@ -1937,13 +1938,13 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         title.TextXAlignment = Enum.TextXAlignment.Left
 
         local desc = Instance.new("TextLabel", Card)
-        desc.Size = UDim2.new(1, -120, 0, 26)
+        desc.Size = UDim2.new(1, -120, 0, IS_DESKTOP and 30 or 26)
         desc.Position = UDim2.new(0, 12, 0, 31)
         desc.BackgroundTransparency = 1
         desc.Font = Enum.Font.Roboto
         desc.Text = description
         desc.TextColor3 = Theme.Muted
-        desc.TextSize = 11
+        desc.TextSize = FontSize(11)
         desc.TextWrapped = true
         desc.TextXAlignment = Enum.TextXAlignment.Left
         desc.TextYAlignment = Enum.TextYAlignment.Top
@@ -2037,13 +2038,13 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         title.TextXAlignment = Enum.TextXAlignment.Left
 
         local desc = Instance.new("TextLabel", Card)
-        desc.Size = UDim2.new(1, -80, 0, 26)
+        desc.Size = UDim2.new(1, -80, 0, IS_DESKTOP and 30 or 26)
         desc.Position = UDim2.new(0, 12, 0, 31)
         desc.BackgroundTransparency = 1
         desc.Font = Enum.Font.Roboto
         desc.Text = description
         desc.TextColor3 = Theme.Muted
-        desc.TextSize = 11
+        desc.TextSize = FontSize(11)
         desc.TextWrapped = true
         desc.TextXAlignment = Enum.TextXAlignment.Left
         desc.TextYAlignment = Enum.TextYAlignment.Top
