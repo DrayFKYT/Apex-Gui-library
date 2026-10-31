@@ -39,6 +39,15 @@ local function FontSize(baseSize, maxBoost)
     return baseSize + boost
 end
 
+-- UIStroke defaults to Contextual, which outlines text instead of the control.
+-- All strokes in this library are borders, so force Border mode everywhere.
+local function CreateStroke(parent)
+    local stroke = Instance.new("UIStroke")
+    stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    stroke.Parent = parent
+    return stroke
+end
+
 -- // Cleanup existing instances if re-running
 if PlayerGui:FindFirstChild("ApexSystemControl") then
     PlayerGui.ApexSystemControl:Destroy()
@@ -133,7 +142,8 @@ ApexLibrary.Version = "APEX_SYS V3.7 PLUS"
 -- 4: desktop 120% whole-UI scaling (reverted in 5).
 -- 5: desktop text uses larger native sizes without scaling the window.
 -- 6: desktop card descriptions match the larger native text sizes.
-ApexLibrary.LayoutRevision = 6
+-- 7: every UIStroke is border-only so button text is no longer outlined.
+ApexLibrary.LayoutRevision = 7
 local CONFIG_VERSION = 2
 
 ApexLibrary.Theme = Theme
@@ -347,10 +357,9 @@ function ApexLibrary:BuildGUI()
         workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(UpdateUIScale)
     end
 
-    local MainStroke = Instance.new("UIStroke")
+    local MainStroke = CreateStroke(MainFrame)
     MainStroke.Color = Theme.Border
     MainStroke.Thickness = 1
-    MainStroke.Parent = MainFrame
 
     -- Header Bar
     local HeaderBar = Instance.new("Frame")
@@ -659,10 +668,9 @@ function ApexLibrary:BuildGUI()
 
         self.MobileButtonRef = MobileButton
 
-        local MobileStroke = Instance.new("UIStroke")
+        local MobileStroke = CreateStroke(MobileButton)
         MobileStroke.Color = self.AccentColor
         MobileStroke.Thickness = 1.5
-        MobileStroke.Parent = MobileButton
 
         local MobileCorner = Instance.new("UICorner")
         MobileCorner.CornerRadius = UDim.new(0, 6)
@@ -754,7 +762,7 @@ local function CreateColorPopup(parentLib, name, defaultColor, callback, preview
     Popup.BackgroundColor3 = Theme.Header
     Popup.Visible = false
     Popup.ZIndex = 60
-    local popupStroke = Instance.new("UIStroke", Popup)
+    local popupStroke = CreateStroke(Popup)
     popupStroke.Color = Theme.Border
     popupStroke.Thickness = 1
     parentLib:RegisterColorPopup(Popup)
@@ -778,7 +786,7 @@ local function CreateColorPopup(parentLib, name, defaultColor, callback, preview
     CloseBtn.Text = "X"
     CloseBtn.TextColor3 = Theme.Muted
     CloseBtn.TextSize = FontSize(11)
-    local closeStroke = Instance.new("UIStroke", CloseBtn)
+    local closeStroke = CreateStroke(CloseBtn)
     closeStroke.Color = Theme.Border
     closeStroke.Thickness = 1
 
@@ -815,7 +823,7 @@ local function CreateColorPopup(parentLib, name, defaultColor, callback, preview
     SVHandle.AnchorPoint = Vector2.new(0.5, 0.5)
     SVHandle.Position = UDim2.new(1, 0, 0, 0)
     SVHandle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-    Instance.new("UIStroke", SVHandle).Color = Color3.fromRGB(0, 0, 0)
+    CreateStroke(SVHandle).Color = Color3.fromRGB(0, 0, 0)
 
     local HueBar = Instance.new("TextButton", Popup)
     HueBar.Size = UDim2.new(1, -24, 0, 14)
@@ -840,7 +848,7 @@ local function CreateColorPopup(parentLib, name, defaultColor, callback, preview
     HueHandle.AnchorPoint = Vector2.new(0.5, 0.5)
     HueHandle.Position = UDim2.new(0, 0, 0.5, 0)
     HueHandle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-    Instance.new("UIStroke", HueHandle).Color = Color3.fromRGB(0, 0, 0)
+    CreateStroke(HueHandle).Color = Color3.fromRGB(0, 0, 0)
 
     local function createRGBInput(labelName, posX)
         local label = Instance.new("TextLabel", Popup)
@@ -862,7 +870,7 @@ local function CreateColorPopup(parentLib, name, defaultColor, callback, preview
         box.Text = "255"
         box.TextColor3 = Theme.Text
         box.TextSize = FontSize(12)
-        local boxStroke = Instance.new("UIStroke", box)
+        local boxStroke = CreateStroke(box)
         boxStroke.Color = Theme.Border
         boxStroke.Thickness = 1
         return box
@@ -881,7 +889,7 @@ local function CreateColorPopup(parentLib, name, defaultColor, callback, preview
     ApplyBtn.Text = "APPLY COLOR"
     ApplyBtn.TextColor3 = parentLib.AccentColor
     ApplyBtn.TextSize = FontSize(11)
-    local applyStroke = Instance.new("UIStroke", ApplyBtn)
+    local applyStroke = CreateStroke(ApplyBtn)
     applyStroke.Color = parentLib.AccentColor
     applyStroke.Thickness = 1
 
@@ -1338,7 +1346,7 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         action.Text = "RUN"
         action.TextColor3 = parentLib.AccentColor
         action.TextSize = FontSize(11)
-        local actionStroke = Instance.new("UIStroke", action)
+        local actionStroke = CreateStroke(action)
         actionStroke.Color = parentLib.AccentColor
         actionStroke.Thickness = 1
 
@@ -1475,7 +1483,7 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
             button.TextSize = FontSize(11)
             button.LayoutOrder = order
             button.Parent = scroll
-            local stroke = Instance.new("UIStroke", button)
+            local stroke = CreateStroke(button)
             stroke.Color = color or Theme.Border
             stroke.Transparency = 0.35
 
@@ -1560,7 +1568,7 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         inputBox.TextColor3 = Theme.Text
         inputBox.TextSize = FontSize(12)
         inputBox.ClearTextOnFocus = false
-        local inputStroke = Instance.new("UIStroke", inputBox)
+        local inputStroke = CreateStroke(inputBox)
         inputStroke.Color = Theme.Border
         inputStroke.Thickness = 1
 
@@ -1668,7 +1676,7 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
             switchTrack.BackgroundColor3 = Theme.Input
             switchTrack.AutoButtonColor = false
             switchTrack.Text = ""
-            local trackStroke = Instance.new("UIStroke", switchTrack)
+            local trackStroke = CreateStroke(switchTrack)
             trackStroke.Color = Theme.Border
             trackStroke.Thickness = 1
 
@@ -1753,7 +1761,7 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         switchTrack.BackgroundColor3 = Theme.Input
         switchTrack.AutoButtonColor = false
         switchTrack.Text = ""
-        local trackStroke = Instance.new("UIStroke", switchTrack)
+        local trackStroke = CreateStroke(switchTrack)
         trackStroke.Color = Theme.Border
         trackStroke.Thickness = 1
 
@@ -1839,7 +1847,7 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         inputBox.TextColor3 = Theme.Text
         inputBox.TextSize = FontSize(12)
         inputBox.ClearTextOnFocus = false
-        local inputStroke = Instance.new("UIStroke", inputBox)
+        local inputStroke = CreateStroke(inputBox)
         inputStroke.Color = Theme.Border
         inputStroke.Thickness = 1
 
@@ -1866,7 +1874,7 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         switchTrack.BackgroundColor3 = Theme.Input
         switchTrack.AutoButtonColor = false
         switchTrack.Text = ""
-        local trackStroke = Instance.new("UIStroke", switchTrack)
+        local trackStroke = CreateStroke(switchTrack)
         trackStroke.Color = Theme.Border
         trackStroke.Thickness = 1
 
@@ -1955,7 +1963,7 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         paletteButton.BackgroundColor3 = defaultColor or parentLib.AccentColor
         paletteButton.AutoButtonColor = false
         paletteButton.Text = ""
-        local paletteStroke = Instance.new("UIStroke", paletteButton)
+        local paletteStroke = CreateStroke(paletteButton)
         paletteStroke.Color = Theme.Text
         paletteStroke.Thickness = 1
 
@@ -1967,7 +1975,7 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         switchTrack.BackgroundColor3 = Theme.Input
         switchTrack.AutoButtonColor = false
         switchTrack.Text = ""
-        local trackStroke = Instance.new("UIStroke", switchTrack)
+        local trackStroke = CreateStroke(switchTrack)
         trackStroke.Color = Theme.Border
         trackStroke.Thickness = 1
 
@@ -2055,7 +2063,7 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         paletteButton.BackgroundColor3 = defaultColor or parentLib.AccentColor
         paletteButton.AutoButtonColor = false
         paletteButton.Text = ""
-        local paletteStroke = Instance.new("UIStroke", paletteButton)
+        local paletteStroke = CreateStroke(paletteButton)
         paletteStroke.Color = Theme.Text
         paletteStroke.Thickness = 1
 
@@ -2091,7 +2099,7 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         keybindButton.Text = parentLib.CurrentHideKey.Name
         keybindButton.TextColor3 = parentLib.AccentColor
         keybindButton.TextSize = FontSize(12)
-        local keyStroke = Instance.new("UIStroke", keybindButton)
+        local keyStroke = CreateStroke(keybindButton)
         keyStroke.Color = Theme.Border
         keyStroke.Thickness = 1
 
@@ -2197,7 +2205,7 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         button.Visible = false
         button.Parent = parentLib.MainFrame
 
-        local stroke = Instance.new("UIStroke", button)
+        local stroke = CreateStroke(button)
         stroke.Color = Theme.RedBorder
         stroke.Thickness = 1
 
@@ -2208,7 +2216,7 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         icon.BackgroundTransparency = 1
         icon.Parent = button
 
-        local iconStroke = Instance.new("UIStroke", icon)
+        local iconStroke = CreateStroke(icon)
         iconStroke.Color = Theme.RedDim
         iconStroke.Thickness = 1
 
