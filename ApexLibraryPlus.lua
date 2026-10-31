@@ -25,6 +25,20 @@ local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 local ConfigFile = "ApexLibrary_Config.json"
 
+-- Desktop gets larger native font sizes instead of fractional UI scaling.
+-- Keeping whole pixel sizes renders text sharply; touch layout is unchanged.
+local IS_DESKTOP = not UserInputService.TouchEnabled
+local function FontSize(baseSize, maxBoost)
+    if not IS_DESKTOP then
+        return baseSize
+    end
+    local boost = baseSize <= 10 and 2 or 1
+    if maxBoost and boost > maxBoost then
+        boost = maxBoost
+    end
+    return baseSize + boost
+end
+
 -- // Cleanup existing instances if re-running
 if PlayerGui:FindFirstChild("ApexSystemControl") then
     PlayerGui.ApexSystemControl:Destroy()
@@ -116,8 +130,9 @@ ApexLibrary.__index = ApexLibrary
 ApexLibrary.Version = "APEX_SYS V3.7 PLUS"
 -- Bump this when a script depends on a layout fix that older copies lack.
 -- 3: overflow tab bar gains left/right navigation arrows.
--- 4: desktop renders the fixed layout at 120% for readable terminal text.
-ApexLibrary.LayoutRevision = 4
+-- 4: desktop 120% whole-UI scaling (reverted in 5).
+-- 5: desktop text uses larger native sizes without scaling the window.
+ApexLibrary.LayoutRevision = 5
 local CONFIG_VERSION = 2
 
 ApexLibrary.Theme = Theme
@@ -314,10 +329,7 @@ function ApexLibrary:BuildGUI()
     MainFrame.Parent = ScreenGui
 
     -- Keep the fixed terminal layout usable on phones and small windows.
-    -- Desktop renders the same layout at 120% so the small terminal text is
-    -- easier to read; touch devices keep the original 1.0 cap and fit scale.
-    local UI_SCALE_MIN = 0.6
-    local UI_SCALE_MAX = UserInputService.TouchEnabled and 1 or 1.2
+    -- Desktop text is enlarged at its native size instead of scaling the UI.
     local UIScale = Instance.new("UIScale")
     UIScale.Parent = MainFrame
     local function UpdateUIScale()
@@ -327,7 +339,7 @@ function ApexLibrary:BuildGUI()
         local camera = workspace.CurrentCamera
         local viewport = camera and camera.ViewportSize or Vector2.new(1280, 720)
         local scale = math.min((viewport.X - 24) / WINDOW_W, (viewport.Y - 24) / WINDOW_H)
-        UIScale.Scale = math.min(math.max(scale, UI_SCALE_MIN), UI_SCALE_MAX)
+        UIScale.Scale = math.min(math.max(scale, 0.6), 1)
     end
     UpdateUIScale()
     if workspace.CurrentCamera then
@@ -374,9 +386,9 @@ function ApexLibrary:BuildGUI()
     TitleLabel.Font = Enum.Font.RobotoMono
     TitleLabel.Text = self.Title
     TitleLabel.TextColor3 = Theme.Text
-    TitleLabel.TextSize = 14
+    TitleLabel.TextSize = FontSize(14)
     TitleLabel.TextStrokeColor3 = Theme.Text
-    TitleLabel.TextStrokeTransparency = 0.75
+    TitleLabel.TextStrokeTransparency = IS_DESKTOP and 1 or 0.75
     TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
     TitleLabel.TextTruncate = Enum.TextTruncate.AtEnd
     TitleLabel.Parent = HeaderBar
@@ -390,7 +402,7 @@ function ApexLibrary:BuildGUI()
     LuaBadge.Font = Enum.Font.RobotoMono
     LuaBadge.Text = "LUAU"
     LuaBadge.TextColor3 = Theme.Muted
-    LuaBadge.TextSize = 10
+    LuaBadge.TextSize = FontSize(10)
     LuaBadge.Parent = HeaderBar
 
     -- Equal-width tab bar. The first tab is created by the caller.
@@ -417,7 +429,7 @@ function ApexLibrary:BuildGUI()
     TabScrollLeft.Font = Enum.Font.RobotoMono
     TabScrollLeft.Text = "<"
     TabScrollLeft.TextColor3 = Theme.Muted
-    TabScrollLeft.TextSize = 14
+    TabScrollLeft.TextSize = FontSize(14)
     TabScrollLeft.TextTransparency = 0.55
     TabScrollLeft.AutoButtonColor = false
     TabScrollLeft.Visible = false
@@ -433,7 +445,7 @@ function ApexLibrary:BuildGUI()
     TabScrollRight.Font = Enum.Font.RobotoMono
     TabScrollRight.Text = ">"
     TabScrollRight.TextColor3 = Theme.Muted
-    TabScrollRight.TextSize = 14
+    TabScrollRight.TextSize = FontSize(14)
     TabScrollRight.TextTransparency = 0.55
     TabScrollRight.AutoButtonColor = false
     TabScrollRight.Visible = false
@@ -456,7 +468,7 @@ function ApexLibrary:BuildGUI()
     SectionHeader.Font = Enum.Font.RobotoMono
     SectionHeader.Text = "INTERFACE PREFERENCES"
     SectionHeader.TextColor3 = Theme.Section
-    SectionHeader.TextSize = 10
+    SectionHeader.TextSize = FontSize(10)
     SectionHeader.TextXAlignment = Enum.TextXAlignment.Left
     SectionHeader.Parent = MainFrame
 
@@ -478,24 +490,24 @@ function ApexLibrary:BuildGUI()
     FooterDivider.Parent = FooterBar
 
     local StatusPrefix = Instance.new("TextLabel")
-    StatusPrefix.Size = UDim2.new(0, 48, 1, 0)
+    StatusPrefix.Size = UDim2.new(0, IS_DESKTOP and 54 or 48, 1, 0)
     StatusPrefix.Position = UDim2.new(0, 13, 0, 0)
     StatusPrefix.BackgroundTransparency = 1
     StatusPrefix.Font = Enum.Font.RobotoMono
     StatusPrefix.Text = "STATUS:"
     StatusPrefix.TextColor3 = Theme.Muted
-    StatusPrefix.TextSize = 10
+    StatusPrefix.TextSize = FontSize(10)
     StatusPrefix.TextXAlignment = Enum.TextXAlignment.Left
     StatusPrefix.Parent = FooterBar
 
     local StatusValue = Instance.new("TextLabel")
-    StatusValue.Size = UDim2.new(0, 100, 1, 0)
-    StatusValue.Position = UDim2.new(0, 60, 0, 0)
+    StatusValue.Size = UDim2.new(0, IS_DESKTOP and 96 or 100, 1, 0)
+    StatusValue.Position = UDim2.new(0, IS_DESKTOP and 66 or 60, 0, 0)
     StatusValue.BackgroundTransparency = 1
     StatusValue.Font = Enum.Font.RobotoMono
     StatusValue.Text = self.StatusText
     StatusValue.TextColor3 = Theme.Muted
-    StatusValue.TextSize = 10
+    StatusValue.TextSize = FontSize(10)
     StatusValue.TextXAlignment = Enum.TextXAlignment.Left
     StatusValue.Parent = FooterBar
     self.StatusValueLabel = StatusValue
@@ -508,7 +520,7 @@ function ApexLibrary:BuildGUI()
     BrandLabel.Font = Enum.Font.RobotoMono
     BrandLabel.Text = self.BrandText
     BrandLabel.TextColor3 = Theme.Muted
-    BrandLabel.TextSize = 10
+    BrandLabel.TextSize = FontSize(10)
     BrandLabel.TextXAlignment = Enum.TextXAlignment.Right
     BrandLabel.Parent = FooterBar
 
@@ -753,7 +765,7 @@ local function CreateColorPopup(parentLib, name, defaultColor, callback, preview
     pTitle.Font = Enum.Font.RobotoMono
     pTitle.Text = "PALETTE // " .. tostring(name)
     pTitle.TextColor3 = Theme.Text
-    pTitle.TextSize = 10
+    pTitle.TextSize = FontSize(10)
     pTitle.TextXAlignment = Enum.TextXAlignment.Left
 
     local CloseBtn = Instance.new("TextButton", Popup)
@@ -764,7 +776,7 @@ local function CreateColorPopup(parentLib, name, defaultColor, callback, preview
     CloseBtn.Font = Enum.Font.RobotoMono
     CloseBtn.Text = "X"
     CloseBtn.TextColor3 = Theme.Muted
-    CloseBtn.TextSize = 11
+    CloseBtn.TextSize = FontSize(11)
     local closeStroke = Instance.new("UIStroke", CloseBtn)
     closeStroke.Color = Theme.Border
     closeStroke.Thickness = 1
@@ -837,7 +849,7 @@ local function CreateColorPopup(parentLib, name, defaultColor, callback, preview
         label.Font = Enum.Font.RobotoMono
         label.Text = labelName
         label.TextColor3 = Theme.Section
-        label.TextSize = 10
+        label.TextSize = FontSize(10)
         label.TextXAlignment = Enum.TextXAlignment.Left
 
         local box = Instance.new("TextBox", Popup)
@@ -848,7 +860,7 @@ local function CreateColorPopup(parentLib, name, defaultColor, callback, preview
         box.Font = Enum.Font.RobotoMono
         box.Text = "255"
         box.TextColor3 = Theme.Text
-        box.TextSize = 12
+        box.TextSize = FontSize(12)
         local boxStroke = Instance.new("UIStroke", box)
         boxStroke.Color = Theme.Border
         boxStroke.Thickness = 1
@@ -867,7 +879,7 @@ local function CreateColorPopup(parentLib, name, defaultColor, callback, preview
     ApplyBtn.Font = Enum.Font.RobotoMono
     ApplyBtn.Text = "APPLY COLOR"
     ApplyBtn.TextColor3 = parentLib.AccentColor
-    ApplyBtn.TextSize = 11
+    ApplyBtn.TextSize = FontSize(11)
     local applyStroke = Instance.new("UIStroke", ApplyBtn)
     applyStroke.Color = parentLib.AccentColor
     applyStroke.Thickness = 1
@@ -1134,12 +1146,12 @@ function ApexLibrary:UpdateTabSizes()
         if useScroll then
             entry.Button.Position = UDim2.new(0, (index - 1) * scrollTabWidth, 0, 0)
             entry.Button.Size = UDim2.new(0, scrollTabWidth, 1, 0)
-            entry.Button.TextSize = 11
+            entry.Button.TextSize = FontSize(11, 1)
             entry.Line.Position = UDim2.new(0, 0, 1, -4)
         else
             entry.Button.Position = UDim2.new((index - 1) / count, 0, 0, 0)
             entry.Button.Size = UDim2.new(1 / count, 0, 1, 0)
-            entry.Button.TextSize = count >= 4 and 10 or 12
+            entry.Button.TextSize = FontSize(count >= 4 and 10 or 12, 1)
             entry.Line.Position = UDim2.new(0, 0, 1, -2)
         end
     end
@@ -1215,9 +1227,9 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
     button.Font = Enum.Font.RobotoMono
     button.Text = tabName
     button.TextColor3 = Theme.Muted
-    button.TextSize = 12
+    button.TextSize = FontSize(12, 1)
     button.TextStrokeColor3 = Theme.Text
-    button.TextStrokeTransparency = 0.85
+    button.TextStrokeTransparency = IS_DESKTOP and 1 or 0.85
     button.AutoButtonColor = false
     button.Parent = self.TabBar
 
@@ -1280,7 +1292,7 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         label.Font = Enum.Font.RobotoMono
         label.Text = tostring(text)
         label.TextColor3 = Theme.Section
-        label.TextSize = 10
+        label.TextSize = FontSize(10)
         label.TextXAlignment = Enum.TextXAlignment.Left
         label.Parent = container
         return label
@@ -1301,7 +1313,7 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         title.Font = Enum.Font.Roboto
         title.Text = name
         title.TextColor3 = Theme.Text
-        title.TextSize = 14
+        title.TextSize = FontSize(14)
         title.TextXAlignment = Enum.TextXAlignment.Left
 
         local desc = Instance.new("TextLabel", Card)
@@ -1324,7 +1336,7 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         action.Font = Enum.Font.RobotoMono
         action.Text = "RUN"
         action.TextColor3 = parentLib.AccentColor
-        action.TextSize = 11
+        action.TextSize = FontSize(11)
         local actionStroke = Instance.new("UIStroke", action)
         actionStroke.Color = parentLib.AccentColor
         actionStroke.Thickness = 1
@@ -1377,7 +1389,7 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         title.Font = Enum.Font.RobotoMono
         title.Text = titleText
         title.TextColor3 = parentLib.AccentColor
-        title.TextSize = 11
+        title.TextSize = FontSize(11)
         title.TextXAlignment = Enum.TextXAlignment.Left
 
         parentLib:RegisterAccentListener(function(col)
@@ -1459,7 +1471,7 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
             button.Font = Enum.Font.RobotoMono
             button.Text = tostring(text)
             button.TextColor3 = color or Theme.Text
-            button.TextSize = 11
+            button.TextSize = FontSize(11)
             button.LayoutOrder = order
             button.Parent = scroll
             local stroke = Instance.new("UIStroke", button)
@@ -1522,7 +1534,7 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         title.Font = Enum.Font.GothamMedium
         title.Text = name
         title.TextColor3 = Theme.Text
-        title.TextSize = 13
+        title.TextSize = FontSize(13)
         title.TextXAlignment = Enum.TextXAlignment.Left
 
         local desc = Instance.new("TextLabel", Card)
@@ -1545,7 +1557,7 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         inputBox.Font = Enum.Font.RobotoMono
         inputBox.Text = tostring(defaultValue or 16)
         inputBox.TextColor3 = Theme.Text
-        inputBox.TextSize = 12
+        inputBox.TextSize = FontSize(12)
         inputBox.ClearTextOnFocus = false
         local inputStroke = Instance.new("UIStroke", inputBox)
         inputStroke.Color = Theme.Border
@@ -1595,7 +1607,7 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         titleLabel.Font = Enum.Font.RobotoMono
         titleLabel.Text = title
         titleLabel.TextColor3 = parentLib.AccentColor
-        titleLabel.TextSize = 10
+        titleLabel.TextSize = FontSize(10)
         titleLabel.TextXAlignment = Enum.TextXAlignment.Left
 
         parentLib:RegisterAccentListener(function(col)
@@ -1646,7 +1658,7 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
             title.Font = Enum.Font.GothamMedium
             title.Text = name
             title.TextColor3 = Theme.Text
-            title.TextSize = 11
+            title.TextSize = FontSize(11)
             title.TextXAlignment = Enum.TextXAlignment.Left
 
             local switchTrack = Instance.new("TextButton", Card)
@@ -1719,7 +1731,7 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         title.Font = Enum.Font.GothamMedium
         title.Text = name
         title.TextColor3 = Theme.Text
-        title.TextSize = 13
+        title.TextSize = FontSize(13)
         title.TextXAlignment = Enum.TextXAlignment.Left
 
         local desc = Instance.new("TextLabel", Card)
@@ -1801,7 +1813,7 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         title.Font = Enum.Font.GothamMedium
         title.Text = name
         title.TextColor3 = Theme.Text
-        title.TextSize = 13
+        title.TextSize = FontSize(13)
         title.TextXAlignment = Enum.TextXAlignment.Left
 
         local desc = Instance.new("TextLabel", Card)
@@ -1824,7 +1836,7 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         inputBox.Font = Enum.Font.RobotoMono
         inputBox.Text = tostring(defaultValue or 24)
         inputBox.TextColor3 = Theme.Text
-        inputBox.TextSize = 12
+        inputBox.TextSize = FontSize(12)
         inputBox.ClearTextOnFocus = false
         local inputStroke = Instance.new("UIStroke", inputBox)
         inputStroke.Color = Theme.Border
@@ -1921,7 +1933,7 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         title.Font = Enum.Font.GothamMedium
         title.Text = name
         title.TextColor3 = Theme.Text
-        title.TextSize = 13
+        title.TextSize = FontSize(13)
         title.TextXAlignment = Enum.TextXAlignment.Left
 
         local desc = Instance.new("TextLabel", Card)
@@ -2021,7 +2033,7 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         title.Font = Enum.Font.GothamMedium
         title.Text = name
         title.TextColor3 = Theme.Text
-        title.TextSize = 13
+        title.TextSize = FontSize(13)
         title.TextXAlignment = Enum.TextXAlignment.Left
 
         local desc = Instance.new("TextLabel", Card)
@@ -2065,7 +2077,7 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         title.Font = Enum.Font.GothamMedium
         title.Text = "Keybind Activation"
         title.TextColor3 = Theme.Text
-        title.TextSize = 14
+        title.TextSize = FontSize(14)
         title.TextXAlignment = Enum.TextXAlignment.Left
 
         local keybindButton = Instance.new("TextButton", Card)
@@ -2077,7 +2089,7 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         keybindButton.Font = Enum.Font.RobotoMono
         keybindButton.Text = parentLib.CurrentHideKey.Name
         keybindButton.TextColor3 = parentLib.AccentColor
-        keybindButton.TextSize = 12
+        keybindButton.TextSize = FontSize(12)
         local keyStroke = Instance.new("UIStroke", keybindButton)
         keyStroke.Color = Theme.Border
         keyStroke.Thickness = 1
@@ -2089,7 +2101,7 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         hint.Font = Enum.Font.Gotham
         hint.Text = "Press to minimize"
         hint.TextColor3 = Theme.Muted
-        hint.TextSize = 12
+        hint.TextSize = FontSize(12)
         hint.TextXAlignment = Enum.TextXAlignment.Left
 
         parentLib:RegisterAccentListener(function(col)
@@ -2216,7 +2228,7 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         label.Font = Enum.Font.RobotoMono
         label.Text = text or "KILL SCRIPT & CLEANUP"
         label.TextColor3 = Theme.RedDim
-        label.TextSize = 13
+        label.TextSize = FontSize(13)
         label.TextXAlignment = Enum.TextXAlignment.Center
         label.TextTruncate = Enum.TextTruncate.AtEnd
 
@@ -2262,7 +2274,7 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         title.Font = Enum.Font.RobotoMono
         title.Text = labelName
         title.TextColor3 = Theme.Section
-        title.TextSize = 10
+        title.TextSize = FontSize(10)
         title.TextXAlignment = Enum.TextXAlignment.Left
 
         local value = Instance.new("TextLabel", Card)
@@ -2272,7 +2284,7 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         value.Font = Enum.Font.RobotoMono
         value.Text = valueText
         value.TextColor3 = Theme.Muted
-        value.TextSize = 11
+        value.TextSize = FontSize(11)
         value.TextXAlignment = Enum.TextXAlignment.Right
 
         local API = {}

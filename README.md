@@ -14,7 +14,7 @@ https://raw.githubusercontent.com/DrayFKYT/Apex-Gui-library/refs/heads/main/Apex
 
 - A Roblox executor environment with `loadstring` and `game:HttpGet`.
 - Optional: `readfile`, `writefile`, and `isfile` for settings persistence.
-- PC and touch devices are supported. On PC the fixed window renders at 120% when the viewport has room, so the 10–13 px terminal text is easier to read; touch devices keep their fit scale.
+- PC and touch devices are supported. On PC the window stays at its native size, but the smallest terminal labels use larger native font sizes for sharper, more readable text; touch devices keep their original text sizes.
 
 ## Quick start
 
