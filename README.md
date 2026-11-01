@@ -38,7 +38,7 @@ https://raw.githubusercontent.com/DrayFKYT/Apex-Gui-library/refs/heads/main/Apex
 
 ```lua
 local ApexLibrary = loadstring(game:HttpGet(
-    "https://raw.githubusercontent.com/DrayFKYT/Apex-Gui-library/refs/heads/main/ApexLibraryPlus.lua?v=7"
+    "https://raw.githubusercontent.com/DrayFKYT/Apex-Gui-library/refs/heads/main/ApexLibraryPlus.lua?v=8"
 ))()
 
 local Apex = ApexLibrary.new({
@@ -64,7 +64,7 @@ Only create one window per script. Re-running `ApexLibrary.new` destroys the pre
 
 ```lua
 local ApexLibrary = getgenv().ApexLibrary or loadstring(game:HttpGet(
-    "https://raw.githubusercontent.com/DrayFKYT/Apex-Gui-library/refs/heads/main/ApexLibraryPlus.lua?v=7"
+    "https://raw.githubusercontent.com/DrayFKYT/Apex-Gui-library/refs/heads/main/ApexLibraryPlus.lua?v=8"
 ))()
 ```
 
@@ -72,7 +72,7 @@ local ApexLibrary = getgenv().ApexLibrary or loadstring(game:HttpGet(
 
 ```lua
 local ApexLibrary = loadstring(game:HttpGet(
-    "https://raw.githubusercontent.com/DrayFKYT/Apex-Gui-library/refs/heads/main/ApexLibraryPlus.lua?v=7"
+    "https://raw.githubusercontent.com/DrayFKYT/Apex-Gui-library/refs/heads/main/ApexLibraryPlus.lua?v=8"
 ))()
 
 local Apex = ApexLibrary.new({
@@ -228,7 +228,7 @@ All examples use `Apex` as the object returned by `ApexLibrary.new(config)`.
 | `Apex:CloseColorPopups()` | `nil` | Closes every open color-picker popup. |
 | `Apex:Unload()` | `nil` | Runs unload callbacks, closes pickers, and destroys the window and mobile button. |
 | `Apex.Version` | `string` | `"APEX_SYS V3.7 PLUS"` |
-| `Apex.LayoutRevision` | `number` | Current layout revision. Revision 7 is the border-stroke/PC text build. |
+| `Apex.LayoutRevision` | `number` | Current layout revision. Revision 8 is the four-visible-tab/wheel-scroll build. |
 | `Apex.Theme` | table | Shared terminal color palette. See [Theme](#theme). |
 | `Apex.CurrentHideKey` | `Enum.KeyCode` | The active hide key. |
 | `Apex.AccentColor` | `Color3` | The active accent color. |
@@ -252,7 +252,8 @@ These are used internally by the library. They are available if you build custom
 | `Apex:CloseColorPopupsExcept(exceptPopup)` | Closes all registered popups except the given one. |
 | `Apex:GetTabScrollMax()` | Returns the maximum horizontal tab scroll offset. |
 | `Apex:UpdateTabScrollButtons()` | Refreshes the visibility of the `<` / `>` tab arrows. |
-| `Apex:ScrollTabs(direction)` | Scrolls the tab bar. Use `-1` for left and `1` for right. |
+| `Apex:ScrollTabs(direction)` | Scrolls the tab bar one full page. Use `-1` for left and `1` for right. |
+| `Apex:ScrollTabsByPixels(delta)` | Scrolls the tab bar by a pixel amount. Mouse wheel input uses one tab width per notch. |
 | `Apex:EnsureTabVisible(entry)` | Scrolls a tab entry into view. |
 | `Apex:UpdateTabSizes()` | Recalculates tab widths after tabs are added. |
 | `Apex:ActivateTab(entry, silent)` | Low-level tab switch that takes a tab entry rather than a tab name. |
@@ -631,8 +632,9 @@ All library strokes are border-only, so button and input text stays clean instea
 - The window is draggable from the header bar.
 - Press the hide key (`RightControl` by default) to hide/show the window on PC.
 - On touch devices, a draggable claw button opens and closes the window.
-- Tabs divide the bar equally and show a 2px accent underline when active.
-- With more than six tabs, the tab bar keeps each label readable and scrolls horizontally instead of squeezing every tab. Left/right arrow buttons appear on each side and jump three tabs at a time; selecting a tab scrolls it into view.
+- Tabs divide the bar equally and show a 2px accent underline when active. Four tabs fit at once; if a script adds more, each tab stays 87px wide with 13px desktop text.
+- With more than four tabs, the tab bar keeps each label readable and scrolls horizontally instead of squeezing every tab. Left/right arrow buttons appear on each side and move one full page; on PC the mouse wheel scrolls one tab per notch. Selecting a tab scrolls it into view.
+- The tab bar has a thin horizontal scrollbar under it, matching the vertical content scrollbar.
 - Changing the accent color updates buttons, active tab lines, color swatches, status text, and other registered accents immediately.
 - All corners are square except the mobile claw button.
 - Open color popups close when switching tabs or hiding the window.
@@ -657,6 +659,7 @@ Recent layout revisions:
 - Revision 5: PC uses larger native font sizes; whole-window 120% scaling was removed.
 - Revision 6: PC card descriptions match the larger native text sizes.
 - Revision 7: every `UIStroke` is border-only, so button text is no longer outlined.
+- Revision 8: four tabs fit at once with larger tab text, horizontal arrows scroll one page, and the PC mouse wheel scrolls the tab bar one tab per notch.
 
 `APEX_SYS V3.6 PLUS` added `CreateButton`, `CreateSectionLabel`, `CreateListCard`, component handles, fixed color-picker initialization, popup management, unload callbacks, and keybind listening guards.
 

@@ -143,7 +143,8 @@ ApexLibrary.Version = "APEX_SYS V3.7 PLUS"
 -- 5: desktop text uses larger native sizes without scaling the window.
 -- 6: desktop card descriptions match the larger native text sizes.
 -- 7: every UIStroke is border-only so button text is no longer outlined.
-ApexLibrary.LayoutRevision = 7
+-- 8: four tabs fit at once; arrows page and the PC wheel scrolls tabs.
+ApexLibrary.LayoutRevision = 8
 local CONFIG_VERSION = 2
 
 ApexLibrary.Theme = Theme
@@ -427,6 +428,7 @@ function ApexLibrary:BuildGUI()
     TabBar.ScrollingDirection = Enum.ScrollingDirection.X
     TabBar.ScrollingEnabled = false
     TabBar.ScrollBarThickness = 0
+    TabBar.ScrollBarImageColor3 = Theme.Border
     TabBar.Parent = MainFrame
 
     -- Left/right navigation appears only when the tab bar overflows.
@@ -568,7 +570,7 @@ function ApexLibrary:BuildGUI()
     self.TabBar = TabBar
     self.TabScrollLeft = TabScrollLeft
     self.TabScrollRight = TabScrollRight
-    self.TabScrollWidth = 88
+    self.TabScrollWidth = 87
     self.SectionHeader = SectionHeader
     self.TabCount = 0
     self.TabButtonsList = {}
@@ -583,6 +585,15 @@ function ApexLibrary:BuildGUI()
     end)
     TabBar:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
         self:UpdateTabScrollButtons()
+    end)
+
+    -- PC mouse wheel: one wheel notch scrolls one tab. Wheel up (forward)
+    -- moves left, wheel down (backward) moves right.
+    TabBar.MouseWheelForward:Connect(function()
+        self:ScrollTabsByPixels(-(self.TabScrollWidth or 87))
+    end)
+    TabBar.MouseWheelBackward:Connect(function()
+        self:ScrollTabsByPixels(self.TabScrollWidth or 87)
     end)
 
     function self:SetVisible(visible)
@@ -1058,7 +1069,7 @@ end
 
 function ApexLibrary:GetTabScrollMax()
     local count = #(self.TabButtonsList or {})
-    local tabWidth = self.TabScrollWidth or 88
+    local tabWidth = self.TabScrollWidth or 87
     local viewWidth = (self.WindowWidth or 392) - 44
     return math.max(0, count * tabWidth - viewWidth)
 end
@@ -1092,11 +1103,28 @@ function ApexLibrary:ScrollTabs(direction)
         return
     end
 
-    local tabWidth = self.TabScrollWidth or 88
+    local viewWidth = (self.WindowWidth or 392) - 44
     local canvas = self.TabBar.CanvasPosition
     local current = canvas and canvas.X or 0
     local maxScroll = self:GetTabScrollMax()
-    local target = math.clamp(current + (direction or 1) * tabWidth * 3, 0, maxScroll)
+    local target = math.clamp(current + (direction or 1) * viewWidth, 0, maxScroll)
+    if target ~= current then
+        self.TabBar.CanvasPosition = Vector2.new(target, 0)
+    end
+    self:UpdateTabScrollButtons()
+end
+
+-- Pixel-level tab scrolling for mouse wheel input. One wheel notch is one
+-- tab width, while the arrow buttons move a full page.
+function ApexLibrary:ScrollTabsByPixels(delta)
+    if not self.TabBar or not self.TabBar.ScrollingEnabled then
+        return
+    end
+
+    local canvas = self.TabBar.CanvasPosition
+    local current = canvas and canvas.X or 0
+    local maxScroll = self:GetTabScrollMax()
+    local target = math.clamp(current + (delta or 0), 0, maxScroll)
     if target ~= current then
         self.TabBar.CanvasPosition = Vector2.new(target, 0)
     end
@@ -1108,7 +1136,7 @@ function ApexLibrary:EnsureTabVisible(entry)
         return
     end
 
-    local tabWidth = self.TabScrollWidth or 88
+    local tabWidth = self.TabScrollWidth or 87
     local viewWidth = (self.WindowWidth or 392) - 44
     local canvas = self.TabBar.CanvasPosition
     local current = canvas and canvas.X or 0
@@ -1130,11 +1158,11 @@ end
 
 function ApexLibrary:UpdateTabSizes()
     local count = math.max(#self.TabButtonsList, 1)
-    -- Six equal tabs match the reference. Once a script adds more than six,
-    -- keep each tab readable and let the bar scroll horizontally instead of
-    -- squeezing every label into an unusable width.
-    local useScroll = count > 6
-    local scrollTabWidth = 88
+    -- Four full tabs fit at the native 392px width. Once a script adds a
+    -- fifth, keep each tab readable and let the bar scroll horizontally
+    -- instead of squeezing every label into an unusable width.
+    local useScroll = count > 4
+    local scrollTabWidth = 87
     local scrollArrowWidth = 22
 
     self.TabScrollWidth = scrollTabWidth
@@ -1155,12 +1183,12 @@ function ApexLibrary:UpdateTabSizes()
         if useScroll then
             entry.Button.Position = UDim2.new(0, (index - 1) * scrollTabWidth, 0, 0)
             entry.Button.Size = UDim2.new(0, scrollTabWidth, 1, 0)
-            entry.Button.TextSize = FontSize(11, 1)
+            entry.Button.TextSize = FontSize(12, 1)
             entry.Line.Position = UDim2.new(0, 0, 1, -4)
         else
             entry.Button.Position = UDim2.new((index - 1) / count, 0, 0, 0)
             entry.Button.Size = UDim2.new(1 / count, 0, 1, 0)
-            entry.Button.TextSize = FontSize(count >= 4 and 10 or 12, 1)
+            entry.Button.TextSize = FontSize(12, 1)
             entry.Line.Position = UDim2.new(0, 0, 1, -2)
         end
     end
