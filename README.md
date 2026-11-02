@@ -38,7 +38,7 @@ https://raw.githubusercontent.com/DrayFKYT/Apex-Gui-library/refs/heads/main/Apex
 
 ```lua
 local ApexLibrary = loadstring(game:HttpGet(
-    "https://raw.githubusercontent.com/DrayFKYT/Apex-Gui-library/refs/heads/main/ApexLibraryPlus.lua?v=8"
+    "https://raw.githubusercontent.com/DrayFKYT/Apex-Gui-library/refs/heads/main/ApexLibraryPlus.lua?v=9"
 ))()
 
 local Apex = ApexLibrary.new({
@@ -64,7 +64,7 @@ Only create one window per script. Re-running `ApexLibrary.new` destroys the pre
 
 ```lua
 local ApexLibrary = getgenv().ApexLibrary or loadstring(game:HttpGet(
-    "https://raw.githubusercontent.com/DrayFKYT/Apex-Gui-library/refs/heads/main/ApexLibraryPlus.lua?v=8"
+    "https://raw.githubusercontent.com/DrayFKYT/Apex-Gui-library/refs/heads/main/ApexLibraryPlus.lua?v=9"
 ))()
 ```
 
@@ -72,7 +72,7 @@ local ApexLibrary = getgenv().ApexLibrary or loadstring(game:HttpGet(
 
 ```lua
 local ApexLibrary = loadstring(game:HttpGet(
-    "https://raw.githubusercontent.com/DrayFKYT/Apex-Gui-library/refs/heads/main/ApexLibraryPlus.lua?v=8"
+    "https://raw.githubusercontent.com/DrayFKYT/Apex-Gui-library/refs/heads/main/ApexLibraryPlus.lua?v=9"
 ))()
 
 local Apex = ApexLibrary.new({
@@ -81,7 +81,6 @@ local Apex = ApexLibrary.new({
     StatusText = "READY",
     HideKey = Enum.KeyCode.RightControl,
     AccentColor = Color3.fromRGB(255, 85, 0),
-    SaveFileName = "MyScript_Config.json",
 })
 
 -- DASHBOARD --------------------------------------------------------
@@ -204,9 +203,9 @@ local Apex = ApexLibrary.new(config)
 | `Title` | `string` | `"SYSTEM_CONTROL // ENGINE"` | Text shown in the window header. |
 | `BrandText` | `string` | `"APEX_SYS // RH"` | Right-side footer label. |
 | `StatusText` | `string` | `"READY"` | Initial footer status. |
-| `HideKey` | `Enum.KeyCode` | `Enum.KeyCode.RightControl` | PC key used to hide/show the window. |
-| `AccentColor` | `Color3` | `Color3.fromRGB(255, 85, 0)` | Initial accent color. |
-| `SaveFileName` | `string` | `"ApexLibrary_Config.json"` | Config file name for this window. |
+| `HideKey` | `Enum.KeyCode` | `Enum.KeyCode.RightControl` | Initial hide key. The shared profile overrides it after the first save. |
+| `AccentColor` | `Color3` | `Color3.fromRGB(255, 85, 0)` | Initial accent color. The shared profile overrides it after the first save. |
+| `SaveFileName` | `string` | `"ApexLibrary_Config.json"` | Deprecated and ignored. Library UI settings always use the shared profile. |
 
 The window is created immediately. The first tab is selected automatically.
 
@@ -224,11 +223,13 @@ All examples use `Apex` as the object returned by `ApexLibrary.new(config)`.
 | `Apex:RegisterAccentListener(callback)` | `nil` | Calls `callback(color)` whenever the accent color changes. |
 | `Apex:RegisterUnloadCallback(callback)` | `nil` | Calls `callback()` when `Apex:Unload()` runs. |
 | `Apex:SetStatus(text)` | `nil` | Updates the footer status text. |
-| `Apex:SaveSettings()` | `nil` | Saves the accent color, hide key, mobile button lock state, and mobile button position. |
+| `Apex:SaveSettings()` | `nil` | Saves the accent color, hide key, mobile button lock state, and mobile button position to the shared library profile. |
 | `Apex:CloseColorPopups()` | `nil` | Closes every open color-picker popup. |
 | `Apex:Unload()` | `nil` | Runs unload callbacks, closes pickers, and destroys the window and mobile button. |
 | `Apex.Version` | `string` | `"APEX_SYS V3.7 PLUS"` |
-| `Apex.LayoutRevision` | `number` | Current layout revision. Revision 8 is the four-visible-tab/wheel-scroll build. |
+| `Apex.LayoutRevision` | `number` | Current layout revision. Revision 9 is the shared library profile build. |
+| `Apex.ConfigVersion` | `number` | Current profile schema version (`2`). |
+| `Apex.ProfileFileName` | `string` | Shared library profile file (`"ApexLibrary_Config.json"`). |
 | `Apex.Theme` | table | Shared terminal color palette. See [Theme](#theme). |
 | `Apex.CurrentHideKey` | `Enum.KeyCode` | The active hide key. |
 | `Apex.AccentColor` | `Color3` | The active accent color. |
@@ -565,7 +566,7 @@ For custom content inside a list card, use `list:GetScrollFrame()` and parent yo
 
 ## Configuration
 
-The library uses the file name set by `SaveFileName`, which defaults to:
+APEX keeps one library-wide profile that every script using the library shares:
 
 ```text
 ApexLibrary_Config.json
@@ -579,15 +580,13 @@ It stores:
 - Mobile button lock state
 - Mobile button position
 
+Customize the accent, hide key, or mobile claw button once and every APEX menu opens with those settings, even when a different script created it. Settings save immediately, and each new window reads the profile fresh.
+
+`SaveFileName` is deprecated and ignored. Library UI settings always use the shared profile so they cannot be split per script. Script-specific settings (toggles, ESP colors, and so on) should stay in that script's own config file, such as `DandysWorld_Apex_Config.json`.
+
 Config version 1 and older are migrated to the terminal defaults so an old blue APEX config does not carry its accent or `P` hide key forward. Persistence is guarded with `pcall`. If the executor does not provide `readfile`, `writefile`, or `isfile`, the UI still works with defaults.
 
-Use a unique `SaveFileName` for each script so two different menus do not overwrite each other:
-
-```lua
-local Apex = ApexLibrary.new({
-    SaveFileName = "MyScript_Config.json",
-})
-```
+On PC there is no mobile claw button, so saving there preserves the last mobile button position instead of replacing it with the default. This keeps the claw where you left it when you switch between PC and touch devices.
 
 ## Theme
 
@@ -636,6 +635,7 @@ All library strokes are border-only, so button and input text stays clean instea
 - With more than four tabs, the tab bar keeps each label readable and scrolls horizontally instead of squeezing every tab. Left/right arrow buttons appear on each side and move one full page; on PC the mouse wheel scrolls one tab per notch. Selecting a tab scrolls it into view.
 - The tab bar has a thin horizontal scrollbar under it, matching the vertical content scrollbar.
 - Changing the accent color updates buttons, active tab lines, color swatches, status text, and other registered accents immediately.
+- The accent color, hide key, mobile lock state, and mobile button position are stored in one shared library profile, so the same customization follows every script that uses APEX.
 - All corners are square except the mobile claw button.
 - Open color popups close when switching tabs or hiding the window.
 - Re-running the library destroys the previous `ApexSystemControl` and `ApexMobileButtonGui` instances before creating replacements.
@@ -660,6 +660,7 @@ Recent layout revisions:
 - Revision 6: PC card descriptions match the larger native text sizes.
 - Revision 7: every `UIStroke` is border-only, so button text is no longer outlined.
 - Revision 8: four tabs fit at once with larger tab text, horizontal arrows scroll one page, and the PC mouse wheel scrolls the tab bar one tab per notch.
+- Revision 9: accent color, hide key, mobile lock, and mobile button position use one shared profile across every script; desktop saves no longer reset the mobile button position.
 
 `APEX_SYS V3.6 PLUS` added `CreateButton`, `CreateSectionLabel`, `CreateListCard`, component handles, fixed color-picker initialization, popup management, unload callbacks, and keybind listening guards.
 
@@ -679,7 +680,7 @@ The original APEX_SYS V3.5 library remains unchanged.
 
 **Settings do not persist.**
 - The executor must provide `readfile`, `writefile`, and `isfile`.
-- Use a unique `SaveFileName` per script.
+- Library UI settings are stored in the shared `ApexLibrary_Config.json` profile. Do not use `SaveFileName` to try to split them per script.
 
 **Text is too small on PC.**
 - Use library revision 5 or newer. It selects larger whole-pixel font sizes without scaling the window.

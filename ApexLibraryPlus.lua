@@ -23,6 +23,8 @@ local TweenService = game:GetService("TweenService")
 -- // Variables
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+-- One library-wide profile shared by every script that uses APEX. Script
+-- feature settings belong in that script's own config file instead.
 local ConfigFile = "ApexLibrary_Config.json"
 
 -- Desktop gets larger native font sizes instead of fractional UI scaling.
@@ -76,8 +78,6 @@ local function LoadConfig()
     end
     return nil
 end
-
-local loadedConfigData = LoadConfig()
 
 -- // Terminal theme sampled from the SYSTEM_CONTROL reference.
 local Theme = {
@@ -144,8 +144,11 @@ ApexLibrary.Version = "APEX_SYS V3.7 PLUS"
 -- 6: desktop card descriptions match the larger native text sizes.
 -- 7: every UIStroke is border-only so button text is no longer outlined.
 -- 8: four tabs fit at once; arrows page and the PC wheel scrolls tabs.
-ApexLibrary.LayoutRevision = 8
+-- 9: one library-wide profile keeps UI settings across every script.
+ApexLibrary.LayoutRevision = 9
 local CONFIG_VERSION = 2
+ApexLibrary.ConfigVersion = CONFIG_VERSION
+ApexLibrary.ProfileFileName = ConfigFile
 
 ApexLibrary.Theme = Theme
 
@@ -156,10 +159,17 @@ function ApexLibrary.new(config)
     self.Title = config.Title or "SYSTEM_CONTROL // ENGINE"
     self.BrandText = config.BrandText or "APEX_SYS // RH"
     self.StatusText = config.StatusText or "READY"
-    self.SaveFileName = config.SaveFileName or ConfigFile
+    -- A single profile is shared by every Apex window. Script-specific
+    -- settings should be saved by the script in its own config file.
+    self.ProfileFileName = ConfigFile
+    self.SaveFileName = ConfigFile -- deprecated compatibility alias
     self.CurrentHideKey = config.HideKey or Enum.KeyCode.RightControl
     self.IsButtonLocked = false
     self.LoadedButtonPos = UDim2.new(0, 24, 0, 100)
+    self.SavedButtonPosition = {
+        X = { Scale = 0, Offset = 24 },
+        Y = { Scale = 0, Offset = 100 }
+    }
     self.AccentColor = config.AccentColor or Theme.Accent
     self.MobileButtonRef = nil
     self.AccentUpdateCallbacks = {}
@@ -169,44 +179,61 @@ function ApexLibrary.new(config)
     self.IsUnloaded = false
     self.ConfigVersion = CONFIG_VERSION
 
+    -- Read the profile on every instance so a setting changed by an earlier
+    -- script or window in this executor session is picked up immediately.
+    local savedProfile = LoadConfig()
     local savedConfigVersion = 0
-    if type(loadedConfigData) == "table" then
-        savedConfigVersion = tonumber(loadedConfigData.ConfigVersion) or 0
+    if type(savedProfile) == "table" then
+        savedConfigVersion = tonumber(savedProfile.ConfigVersion) or 0
         -- Version 1 and older used the blue APEX theme and the P hide key.
         -- Migrate those configs to the terminal theme instead of carrying the
         -- old look forward. Mobile-button settings are safe to keep.
         if savedConfigVersion >= CONFIG_VERSION then
-            if loadedConfigData.AccentColor then
+            if type(savedProfile.AccentColor) == "table" then
+                local color = savedProfile.AccentColor
                 self.AccentColor = Color3.fromRGB(
-                    loadedConfigData.AccentColor.R or 255,
-                    loadedConfigData.AccentColor.G or 85,
-                    loadedConfigData.AccentColor.B or 0
+                    math.clamp(tonumber(color.R) or 255, 0, 255),
+                    math.clamp(tonumber(color.G) or 85, 0, 255),
+                    math.clamp(tonumber(color.B) or 0, 0, 255)
                 )
             end
-            if loadedConfigData.HideKey then
+            if type(savedProfile.HideKey) == "string" then
                 pcall(function()
-                    local key = Enum.KeyCode[loadedConfigData.HideKey]
+                    local key = Enum.KeyCode[savedProfile.HideKey]
                     if key then
                         self.CurrentHideKey = key
                     end
                 end)
             end
         end
-        if loadedConfigData.IsButtonLocked ~= nil then
-            self.IsButtonLocked = loadedConfigData.IsButtonLocked
+        if savedProfile.IsButtonLocked ~= nil then
+            self.IsButtonLocked = savedProfile.IsButtonLocked == true
         end
-        if loadedConfigData.ButtonPosition then
+        if type(savedProfile.ButtonPosition) == "table" then
             pcall(function()
-                local p = loadedConfigData.ButtonPosition
+                local p = savedProfile.ButtonPosition
+                local px = type(p.X) == "table" and p.X or {}
+                local py = type(p.Y) == "table" and p.Y or {}
                 self.LoadedButtonPos = UDim2.new(
-                    p.X.Scale or 0,
-                    p.X.Offset or 24,
-                    p.Y.Scale or 0,
-                    p.Y.Offset or 100
+                    tonumber(px.Scale) or 0,
+                    tonumber(px.Offset) or 24,
+                    tonumber(py.Scale) or 0,
+                    tonumber(py.Offset) or 100
                 )
             end)
         end
     end
+
+    self.SavedButtonPosition = {
+        X = {
+            Scale = self.LoadedButtonPos.X.Scale,
+            Offset = self.LoadedButtonPos.X.Offset
+        },
+        Y = {
+            Scale = self.LoadedButtonPos.Y.Scale,
+            Offset = self.LoadedButtonPos.Y.Offset
+        }
+    }
 
     self:BuildGUI()
     if savedConfigVersion < CONFIG_VERSION then
@@ -280,6 +307,33 @@ function ApexLibrary:Unload()
 end
 
 function ApexLibrary:SaveSettings()
+    -- Keep the last mobile button position when this instance is running on
+    -- PC. Otherwise changing the accent or hide key on desktop would write the
+    -- default claw position over the shared profile.
+    local buttonPosition = self.SavedButtonPosition or {
+        X = { Scale = 0, Offset = 24 },
+        Y = { Scale = 0, Offset = 100 }
+    }
+    if self.MobileButtonRef then
+        buttonPosition = {
+            X = {
+                Scale = self.MobileButtonRef.Position.X.Scale,
+                Offset = self.MobileButtonRef.Position.X.Offset
+            },
+            Y = {
+                Scale = self.MobileButtonRef.Position.Y.Scale,
+                Offset = self.MobileButtonRef.Position.Y.Offset
+            }
+        }
+        self.SavedButtonPosition = buttonPosition
+        self.LoadedButtonPos = UDim2.new(
+            buttonPosition.X.Scale,
+            buttonPosition.X.Offset,
+            buttonPosition.Y.Scale,
+            buttonPosition.Y.Offset
+        )
+    end
+
     SaveConfig({
         ConfigVersion = CONFIG_VERSION,
         AccentColor = {
@@ -289,19 +343,7 @@ function ApexLibrary:SaveSettings()
         },
         HideKey = self.CurrentHideKey.Name,
         IsButtonLocked = self.IsButtonLocked,
-        ButtonPosition = self.MobileButtonRef and {
-            X = {
-                Scale = self.MobileButtonRef.Position.X.Scale,
-                Offset = self.MobileButtonRef.Position.X.Offset
-            },
-            Y = {
-                Scale = self.MobileButtonRef.Position.Y.Scale,
-                Offset = self.MobileButtonRef.Position.Y.Offset
-            }
-        } or {
-            X = { Scale = 0, Offset = 24 },
-            Y = { Scale = 0, Offset = 100 }
-        }
+        ButtonPosition = buttonPosition
     })
 end
 
