@@ -227,7 +227,7 @@ All examples use `Apex` as the object returned by `ApexLibrary.new(config)`.
 | `Apex:CloseColorPopups()` | `nil` | Closes every open color-picker popup. |
 | `Apex:Unload()` | `nil` | Runs unload callbacks, closes pickers, and destroys the window and mobile button. |
 | `Apex.Version` | `string` | `"APEX_SYS V3.7 PLUS"` |
-| `Apex.LayoutRevision` | `number` | Current layout revision. Revision 10 adds the keybind action row. |
+| `Apex.LayoutRevision` | `number` | Current layout revision. Revision 11 allows keybind rows without an action button. |
 | `Apex.ConfigVersion` | `number` | Current profile schema version (`2`). |
 | `Apex.ProfileFileName` | `string` | Shared library profile file (`"ApexLibrary_Config.json"`). |
 | `Apex.Theme` | table | Shared terminal color palette. See [Theme](#theme). |
@@ -540,6 +540,7 @@ Adds an action card with a key chip, an adjacent clear `X`, and a right-side act
 | --- | --- | --- | --- |
 | `Key` | `Enum.KeyCode` / `string` / `false` | `nil` | Initial binding. `false` or `nil` starts at `NONE`. |
 | `Required` | `boolean` | `false` | When true, the binding cannot be cleared and no `X` is shown. |
+| `ShowAction` | `boolean` | `true` | Set to false to omit the right-side action button, leaving a keybind-only row. |
 | `TriggerOnKey` | `boolean` | `true` | Fires `OnActivated` when the bound key is pressed. |
 | `ActionText` | `string` | `"RUN"` | Label on the right-side action button. |
 | `OnActivated` | `function` | `nil` | Runs on action-button click, or on the bound key when `TriggerOnKey` is true. |
@@ -551,7 +552,7 @@ Returns an API:
 | --- | --- |
 | `row:GetKey()` | Returns the current `Enum.KeyCode`, or `nil` for `NONE`. |
 | `row:SetKey(key)` | Sets the binding (required rows fall back to the current hide key when cleared). |
-| `row:GetButton()` | Returns the action `TextButton`. |
+| `row:GetButton()` | Returns the action `TextButton`, or `nil` when `ShowAction = false`. |
 | `row:GetKeybindButton()` | Returns the key chip `TextButton`. |
 | `row:GetClearButton()` | Returns the `X` clear button. |
 | `row:SetText(text)` | Changes the action button label. |
@@ -704,6 +705,7 @@ Recent layout revisions:
 - Revision 8: four tabs fit at once with larger tab text, horizontal arrows scroll one page, and the PC mouse wheel scrolls the tab bar one tab per notch.
 - Revision 9: accent color, hide key, mobile lock, and mobile button position use one shared profile across every script; desktop saves no longer reset the mobile button position.
 - Revision 10: `CreateKeybindButton` adds action cards with programmable key chips; optional rows can be cleared with `X`, while required rows cannot be cleared and never show it.
+- Revision 11: `ShowAction = false` turns a keybind action row into a keybind-only row, removing the right-side action button.
 
 `APEX_SYS V3.6 PLUS` added `CreateButton`, `CreateSectionLabel`, `CreateListCard`, component handles, fixed color-picker initialization, popup management, unload callbacks, and keybind listening guards.
 

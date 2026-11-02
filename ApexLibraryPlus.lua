@@ -147,7 +147,8 @@ ApexLibrary.Version = "APEX_SYS V3.7 PLUS"
 -- 8: four tabs fit at once; arrows page and the PC wheel scrolls tabs.
 -- 9: one library-wide profile keeps UI settings across every script.
 -- 10: keybind action rows with optional or mandatory key bindings.
-ApexLibrary.LayoutRevision = 10
+-- 11: keybind rows can omit the right-side action button (`ShowAction = false`).
+ApexLibrary.LayoutRevision = 11
 local CONFIG_VERSION = 2
 ApexLibrary.ConfigVersion = CONFIG_VERSION
 ApexLibrary.ProfileFileName = ConfigFile
@@ -1456,11 +1457,13 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
     end
 
     -- Action button card with a programmable keybind chip. Required bindings
-    -- cannot be cleared and never show the clear X.
+    -- cannot be cleared and never show the clear X. ShowAction=false removes
+    -- the right-side action button, leaving a keybind-only row.
     function TabObj:CreateKeybindButton(name, description, options)
         options = options or {}
         local required = options.Required == true
         local triggerOnKey = options.TriggerOnKey ~= false
+        local showAction = options.ShowAction ~= false
         local actionText = options.ActionText or "RUN"
 
         local function normalizeKey(value)
@@ -1495,7 +1498,7 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         Card.Parent = container
 
         local title = Instance.new("TextLabel", Card)
-        title.Size = UDim2.new(1, -190, 0, 22)
+        title.Size = UDim2.new(1, showAction and -190 or -124, 0, 22)
         title.Position = UDim2.new(0, 12, 0, 9)
         title.BackgroundTransparency = 1
         title.Font = Enum.Font.Roboto
@@ -1506,7 +1509,7 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         title.TextTruncate = Enum.TextTruncate.AtEnd
 
         local desc = Instance.new("TextLabel", Card)
-        desc.Size = UDim2.new(1, -190, 0, IS_DESKTOP and 30 or 26)
+        desc.Size = UDim2.new(1, showAction and -190 or -124, 0, IS_DESKTOP and 30 or 26)
         desc.Position = UDim2.new(0, 12, 0, 31)
         desc.BackgroundTransparency = 1
         desc.Font = Enum.Font.Roboto
@@ -1520,7 +1523,7 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         local clear = Instance.new("TextButton", Card)
         clear.Name = "KeybindClearButton"
         clear.Size = UDim2.new(0, 16, 0, 26)
-        clear.Position = UDim2.new(1, -174, 0.5, -13)
+        clear.Position = UDim2.new(1, showAction and -174 or -108, 0.5, -13)
         clear.BackgroundColor3 = Theme.Input
         clear.AutoButtonColor = false
         clear.Font = Enum.Font.RobotoMono
@@ -1535,7 +1538,7 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         local keybindButton = Instance.new("TextButton", Card)
         keybindButton.Name = "KeybindButton"
         keybindButton.Size = UDim2.new(0, 64, 0, 26)
-        keybindButton.Position = UDim2.new(1, -154, 0.5, -13)
+        keybindButton.Position = UDim2.new(1, showAction and -154 or -88, 0.5, -13)
         keybindButton.BackgroundColor3 = Theme.Input
         keybindButton.AutoButtonColor = false
         keybindButton.Font = Enum.Font.RobotoMono
@@ -1547,26 +1550,31 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         keyStroke.Color = Theme.Border
         keyStroke.Thickness = 1
 
-        local action = Instance.new("TextButton", Card)
-        action.Name = "KeybindActionButton"
-        action.Size = UDim2.new(0, 72, 0, 26)
-        action.Position = UDim2.new(1, -84, 0.5, -13)
-        action.BackgroundColor3 = Theme.Input
-        action.AutoButtonColor = false
-        action.Font = Enum.Font.RobotoMono
-        action.Text = tostring(actionText)
-        action.TextColor3 = parentLib.AccentColor
-        action.TextSize = FontSize(10)
-        local actionStroke = CreateStroke(action)
-        actionStroke.Color = parentLib.AccentColor
-        actionStroke.Thickness = 1
+        local action, actionStroke
+        if showAction then
+            action = Instance.new("TextButton", Card)
+            action.Name = "KeybindActionButton"
+            action.Size = UDim2.new(0, 72, 0, 26)
+            action.Position = UDim2.new(1, -84, 0.5, -13)
+            action.BackgroundColor3 = Theme.Input
+            action.AutoButtonColor = false
+            action.Font = Enum.Font.RobotoMono
+            action.Text = tostring(actionText)
+            action.TextColor3 = parentLib.AccentColor
+            action.TextSize = FontSize(10)
+            actionStroke = CreateStroke(action)
+            actionStroke.Color = parentLib.AccentColor
+            actionStroke.Thickness = 1
+        end
 
         local listening = false
         local cancelSelf
 
         parentLib:RegisterAccentListener(function(col)
-            action.TextColor3 = col
-            actionStroke.Color = col
+            if action then
+                action.TextColor3 = col
+                actionStroke.Color = col
+            end
             if listening then
                 return
             end
@@ -1646,21 +1654,23 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
             setKey(nil)
         end)
 
-        action.MouseEnter:Connect(function()
-            if action.Parent then
-                action.BackgroundColor3 = Theme.TabBar
-            end
-        end)
-        action.MouseLeave:Connect(function()
-            if action.Parent then
-                action.BackgroundColor3 = Theme.Input
-            end
-        end)
-        action.Activated:Connect(function()
-            if options.OnActivated then
-                pcall(options.OnActivated)
-            end
-        end)
+        if action then
+            action.MouseEnter:Connect(function()
+                if action.Parent then
+                    action.BackgroundColor3 = Theme.TabBar
+                end
+            end)
+            action.MouseLeave:Connect(function()
+                if action.Parent then
+                    action.BackgroundColor3 = Theme.Input
+                end
+            end)
+            action.Activated:Connect(function()
+                if options.OnActivated then
+                    pcall(options.OnActivated)
+                end
+            end)
+        end
 
         UserInputService.InputBegan:Connect(function(input, gameProcessed)
             if parentLib.IsUnloaded then
@@ -1726,9 +1736,14 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
             return clear
         end
         function API:SetText(text)
-            action.Text = tostring(text)
+            if action then
+                action.Text = tostring(text)
+            end
         end
         function API:SetEnabled(enabled)
+            if not action then
+                return
+            end
             action.Active = enabled and true or false
             action.TextTransparency = enabled and 0 or 0.5
         end
