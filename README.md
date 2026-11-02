@@ -25,7 +25,7 @@ The original APEX_SYS V3.5 file is not modified. `ApexLibraryPlus.lua` is a sepa
 ## Raw file
 
 ```text
-https://raw.githubusercontent.com/DrayFKYT/Apex-Gui-library/refs/heads/main/ApexLibraryPlus.lua
+https://raw.githubusercontent.com/DrayFKYT/Apex-Gui-library/main/ApexLibraryPlus.lua
 ```
 
 ## Requirements
@@ -38,7 +38,7 @@ https://raw.githubusercontent.com/DrayFKYT/Apex-Gui-library/refs/heads/main/Apex
 
 ```lua
 local ApexLibrary = loadstring(game:HttpGet(
-    "https://raw.githubusercontent.com/DrayFKYT/Apex-Gui-library/refs/heads/main/ApexLibraryPlus.lua?v=9"
+    "https://raw.githubusercontent.com/DrayFKYT/Apex-Gui-library/main/ApexLibraryPlus.lua?v=11"
 ))()
 
 local Apex = ApexLibrary.new({
@@ -64,7 +64,7 @@ Only create one window per script. Re-running `ApexLibrary.new` destroys the pre
 
 ```lua
 local ApexLibrary = getgenv().ApexLibrary or loadstring(game:HttpGet(
-    "https://raw.githubusercontent.com/DrayFKYT/Apex-Gui-library/refs/heads/main/ApexLibraryPlus.lua?v=9"
+    "https://raw.githubusercontent.com/DrayFKYT/Apex-Gui-library/main/ApexLibraryPlus.lua?v=11"
 ))()
 ```
 
@@ -72,7 +72,7 @@ local ApexLibrary = getgenv().ApexLibrary or loadstring(game:HttpGet(
 
 ```lua
 local ApexLibrary = loadstring(game:HttpGet(
-    "https://raw.githubusercontent.com/DrayFKYT/Apex-Gui-library/refs/heads/main/ApexLibraryPlus.lua?v=9"
+    "https://raw.githubusercontent.com/DrayFKYT/Apex-Gui-library/main/ApexLibraryPlus.lua?v=11"
 ))()
 
 local Apex = ApexLibrary.new({
