@@ -227,7 +227,7 @@ All examples use `Apex` as the object returned by `ApexLibrary.new(config)`.
 | `Apex:CloseColorPopups()` | `nil` | Closes every open color-picker popup. |
 | `Apex:Unload()` | `nil` | Runs unload callbacks, closes pickers, and destroys the window and mobile button. |
 | `Apex.Version` | `string` | `"APEX_SYS V3.7 PLUS"` |
-| `Apex.LayoutRevision` | `number` | Current layout revision. Revision 9 is the shared library profile build. |
+| `Apex.LayoutRevision` | `number` | Current layout revision. Revision 10 adds the keybind action row. |
 | `Apex.ConfigVersion` | `number` | Current profile schema version (`2`). |
 | `Apex.ProfileFileName` | `string` | Shared library profile file (`"ApexLibrary_Config.json"`). |
 | `Apex.Theme` | table | Shared terminal color palette. See [Theme](#theme). |
@@ -279,6 +279,7 @@ These are used internally by the library. They are available if you build custom
 | `Tab:CreateReadMeCard(title, bodyText, height)` | `TextLabel` | Adds an information card. `height` defaults to `90`. Returns the body label. |
 | `Tab:CreateColumnLayout(callback)` | Column API | Adds a two-column row and calls `callback(columnAPI)`. |
 | `Tab:CreateKeybindCard()` | Keybind API | Adds the PC hide-key picker card. |
+| `Tab:CreateKeybindButton(name, description, options)` | Keybind action API | Adds an action card with a programmable key chip, optional clear `X`, and key-trigger callback. |
 | `Tab:CreateKillButton(text, callback, contentHeight)` | `TextButton` | Adds the fixed red kill button above the footer. |
 | `Tab:CreateInfoCard(labelName, valueText)` | Info API | Adds a two-column label/value row. |
 
@@ -517,6 +518,47 @@ Returns an API:
 
 Press the keybind button, then press a keyboard key to bind it. `Escape` cancels. Listening automatically stops after 5 seconds if no key is pressed.
 
+### Keybind action row
+
+```lua
+local ragdoll = Tab:CreateKeybindButton("RAGDOLL", "Tumble the current creature.", {
+    Key = Enum.KeyCode.R,
+    Required = false,
+    ActionText = "RAGDOLL",
+    OnActivated = function()
+        print("ragdoll")
+    end,
+    OnKeyChanged = function(key)
+        print(key and key.Name or "NONE")
+    end
+})
+```
+
+Adds an action card with a key chip, an adjacent clear `X`, and a right-side action button. Options:
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `Key` | `Enum.KeyCode` / `string` / `false` | `nil` | Initial binding. `false` or `nil` starts at `NONE`. |
+| `Required` | `boolean` | `false` | When true, the binding cannot be cleared and no `X` is shown. |
+| `TriggerOnKey` | `boolean` | `true` | Fires `OnActivated` when the bound key is pressed. |
+| `ActionText` | `string` | `"RUN"` | Label on the right-side action button. |
+| `OnActivated` | `function` | `nil` | Runs on action-button click, or on the bound key when `TriggerOnKey` is true. |
+| `OnKeyChanged` | `function` | `nil` | Called with the new `Enum.KeyCode`, or `nil` when cleared. |
+
+Returns an API:
+
+| Method | Description |
+| --- | --- |
+| `row:GetKey()` | Returns the current `Enum.KeyCode`, or `nil` for `NONE`. |
+| `row:SetKey(key)` | Sets the binding (required rows fall back to the current hide key when cleared). |
+| `row:GetButton()` | Returns the action `TextButton`. |
+| `row:GetKeybindButton()` | Returns the key chip `TextButton`. |
+| `row:GetClearButton()` | Returns the `X` clear button. |
+| `row:SetText(text)` | Changes the action button label. |
+| `row:SetEnabled(enabled)` | Enables or disables the action button. |
+
+Click the key chip and press a keyboard key to bind it. `Escape` cancels. Clicking `X` (optional rows only) clears the binding to `NONE`. Key triggers are ignored while a textbox is focused.
+
 ### Kill script button
 
 ```lua
@@ -661,6 +703,7 @@ Recent layout revisions:
 - Revision 7: every `UIStroke` is border-only, so button text is no longer outlined.
 - Revision 8: four tabs fit at once with larger tab text, horizontal arrows scroll one page, and the PC mouse wheel scrolls the tab bar one tab per notch.
 - Revision 9: accent color, hide key, mobile lock, and mobile button position use one shared profile across every script; desktop saves no longer reset the mobile button position.
+- Revision 10: `CreateKeybindButton` adds action cards with programmable key chips; optional rows can be cleared with `X`, while required rows cannot be cleared and never show it.
 
 `APEX_SYS V3.6 PLUS` added `CreateButton`, `CreateSectionLabel`, `CreateListCard`, component handles, fixed color-picker initialization, popup management, unload callbacks, and keybind listening guards.
 

@@ -4,6 +4,7 @@
     BASE:   APEX_SYS V3.5 (core visual style preserved)
     EXTENSIONS:
         - CreateButton
+        - CreateKeybindButton (action button + programmable keybind chip)
         - CreateSectionLabel
         - CreateListCard (dynamic scrollable list)
         - Component handles: Set/Get/SetColor
@@ -145,7 +146,8 @@ ApexLibrary.Version = "APEX_SYS V3.7 PLUS"
 -- 7: every UIStroke is border-only so button text is no longer outlined.
 -- 8: four tabs fit at once; arrows page and the PC wheel scrolls tabs.
 -- 9: one library-wide profile keeps UI settings across every script.
-ApexLibrary.LayoutRevision = 9
+-- 10: keybind action rows with optional or mandatory key bindings.
+ApexLibrary.LayoutRevision = 10
 local CONFIG_VERSION = 2
 ApexLibrary.ConfigVersion = CONFIG_VERSION
 ApexLibrary.ProfileFileName = ConfigFile
@@ -176,6 +178,7 @@ function ApexLibrary.new(config)
     self.ColorPopups = {}
     self.UnloadCallbacks = {}
     self.IsListeningForKey = false
+    self.ActiveKeybindCancel = nil
     self.IsUnloaded = false
     self.ConfigVersion = CONFIG_VERSION
 
@@ -1442,6 +1445,286 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         end)
 
         local API = {}
+        function API:SetText(text)
+            action.Text = tostring(text)
+        end
+        function API:SetEnabled(enabled)
+            action.Active = enabled and true or false
+            action.TextTransparency = enabled and 0 or 0.5
+        end
+        return API
+    end
+
+    -- Action button card with a programmable keybind chip. Required bindings
+    -- cannot be cleared and never show the clear X.
+    function TabObj:CreateKeybindButton(name, description, options)
+        options = options or {}
+        local required = options.Required == true
+        local triggerOnKey = options.TriggerOnKey ~= false
+        local actionText = options.ActionText or "RUN"
+
+        local function normalizeKey(value)
+            if value == nil or value == false then
+                return nil
+            end
+            if type(value) == "string" then
+                local ok, key = pcall(function()
+                    return Enum.KeyCode[value]
+                end)
+                return ok and key or nil
+            end
+            local ok, keyName = pcall(function()
+                return value.Name
+            end)
+            if ok and keyName then
+                return value
+            end
+            return nil
+        end
+
+        local key = normalizeKey(options.Key)
+        if required and not key then
+            key = parentLib.CurrentHideKey or Enum.KeyCode.RightControl
+        end
+
+        local Card = Instance.new("Frame")
+        Card.Name = "KeybindButtonCard"
+        Card.Size = UDim2.new(1, 0, 0, 64)
+        Card.BackgroundColor3 = Theme.Card
+        Card.BorderSizePixel = 0
+        Card.Parent = container
+
+        local title = Instance.new("TextLabel", Card)
+        title.Size = UDim2.new(1, -190, 0, 22)
+        title.Position = UDim2.new(0, 12, 0, 9)
+        title.BackgroundTransparency = 1
+        title.Font = Enum.Font.Roboto
+        title.Text = name
+        title.TextColor3 = Theme.Text
+        title.TextSize = FontSize(14)
+        title.TextXAlignment = Enum.TextXAlignment.Left
+        title.TextTruncate = Enum.TextTruncate.AtEnd
+
+        local desc = Instance.new("TextLabel", Card)
+        desc.Size = UDim2.new(1, -190, 0, IS_DESKTOP and 30 or 26)
+        desc.Position = UDim2.new(0, 12, 0, 31)
+        desc.BackgroundTransparency = 1
+        desc.Font = Enum.Font.Roboto
+        desc.Text = description
+        desc.TextColor3 = Theme.Muted
+        desc.TextSize = FontSize(11)
+        desc.TextWrapped = true
+        desc.TextXAlignment = Enum.TextXAlignment.Left
+        desc.TextYAlignment = Enum.TextYAlignment.Top
+
+        local clear = Instance.new("TextButton", Card)
+        clear.Name = "KeybindClearButton"
+        clear.Size = UDim2.new(0, 16, 0, 26)
+        clear.Position = UDim2.new(1, -174, 0.5, -13)
+        clear.BackgroundColor3 = Theme.Input
+        clear.AutoButtonColor = false
+        clear.Font = Enum.Font.RobotoMono
+        clear.Text = "X"
+        clear.TextColor3 = Theme.Muted
+        clear.TextSize = FontSize(11)
+        clear.Visible = not required and key ~= nil
+        local clearStroke = CreateStroke(clear)
+        clearStroke.Color = Theme.Border
+        clearStroke.Thickness = 1
+
+        local keybindButton = Instance.new("TextButton", Card)
+        keybindButton.Name = "KeybindButton"
+        keybindButton.Size = UDim2.new(0, 64, 0, 26)
+        keybindButton.Position = UDim2.new(1, -154, 0.5, -13)
+        keybindButton.BackgroundColor3 = Theme.Input
+        keybindButton.AutoButtonColor = false
+        keybindButton.Font = Enum.Font.RobotoMono
+        keybindButton.Text = key and key.Name or "NONE"
+        keybindButton.TextColor3 = key and parentLib.AccentColor or Theme.Muted
+        keybindButton.TextSize = FontSize(10)
+        keybindButton.TextTruncate = Enum.TextTruncate.AtEnd
+        local keyStroke = CreateStroke(keybindButton)
+        keyStroke.Color = Theme.Border
+        keyStroke.Thickness = 1
+
+        local action = Instance.new("TextButton", Card)
+        action.Name = "KeybindActionButton"
+        action.Size = UDim2.new(0, 72, 0, 26)
+        action.Position = UDim2.new(1, -84, 0.5, -13)
+        action.BackgroundColor3 = Theme.Input
+        action.AutoButtonColor = false
+        action.Font = Enum.Font.RobotoMono
+        action.Text = tostring(actionText)
+        action.TextColor3 = parentLib.AccentColor
+        action.TextSize = FontSize(10)
+        local actionStroke = CreateStroke(action)
+        actionStroke.Color = parentLib.AccentColor
+        actionStroke.Thickness = 1
+
+        local listening = false
+        local cancelSelf
+
+        parentLib:RegisterAccentListener(function(col)
+            action.TextColor3 = col
+            actionStroke.Color = col
+            if listening then
+                return
+            end
+            if key then
+                keybindButton.TextColor3 = col
+            else
+                keybindButton.TextColor3 = Theme.Muted
+            end
+        end)
+
+        local function stopListening()
+            listening = false
+            parentLib.IsListeningForKey = false
+            if parentLib.ActiveKeybindCancel == cancelSelf then
+                parentLib.ActiveKeybindCancel = nil
+            end
+            keybindButton.Text = key and key.Name or "NONE"
+            keybindButton.TextColor3 = key and parentLib.AccentColor or Theme.Muted
+            keyStroke.Color = Theme.Border
+        end
+
+        local function setKey(newKey)
+            key = normalizeKey(newKey)
+            if required and not key then
+                key = parentLib.CurrentHideKey or Enum.KeyCode.RightControl
+            end
+            keybindButton.Text = key and key.Name or "NONE"
+            keybindButton.TextColor3 = key and parentLib.AccentColor or Theme.Muted
+            keyStroke.Color = Theme.Border
+            clear.Visible = not required and key ~= nil
+            if options.OnKeyChanged then
+                pcall(options.OnKeyChanged, key)
+            end
+        end
+
+        cancelSelf = function()
+            if listening then
+                stopListening()
+            end
+        end
+
+        keybindButton.Activated:Connect(function()
+            if listening then
+                stopListening()
+                return
+            end
+            if parentLib.ActiveKeybindCancel and parentLib.ActiveKeybindCancel ~= cancelSelf then
+                pcall(parentLib.ActiveKeybindCancel)
+            end
+            listening = true
+            parentLib.IsListeningForKey = true
+            parentLib.ActiveKeybindCancel = cancelSelf
+            keybindButton.Text = "PRESS KEY..."
+            keybindButton.TextColor3 = Color3.fromRGB(255, 200, 50)
+            keyStroke.Color = Color3.fromRGB(255, 200, 50)
+            task.delay(5, function()
+                if not listening then
+                    return
+                end
+                if keybindButton.Parent then
+                    stopListening()
+                else
+                    listening = false
+                    parentLib.IsListeningForKey = false
+                    if parentLib.ActiveKeybindCancel == cancelSelf then
+                        parentLib.ActiveKeybindCancel = nil
+                    end
+                end
+            end)
+        end)
+
+        clear.Activated:Connect(function()
+            if required then
+                return
+            end
+            stopListening()
+            setKey(nil)
+        end)
+
+        action.MouseEnter:Connect(function()
+            if action.Parent then
+                action.BackgroundColor3 = Theme.TabBar
+            end
+        end)
+        action.MouseLeave:Connect(function()
+            if action.Parent then
+                action.BackgroundColor3 = Theme.Input
+            end
+        end)
+        action.Activated:Connect(function()
+            if options.OnActivated then
+                pcall(options.OnActivated)
+            end
+        end)
+
+        UserInputService.InputBegan:Connect(function(input, gameProcessed)
+            if parentLib.IsUnloaded then
+                return
+            end
+            if not keybindButton.Parent then
+                if listening then
+                    stopListening()
+                end
+                return
+            end
+
+            if listening then
+                if input.UserInputType ~= Enum.UserInputType.Keyboard then
+                    return
+                end
+                if input.KeyCode == Enum.KeyCode.Escape then
+                    stopListening()
+                    return
+                end
+                if gameProcessed then
+                    return
+                end
+                setKey(input.KeyCode)
+                stopListening()
+                return
+            end
+
+            if not triggerOnKey or not key then
+                return
+            end
+            if parentLib.IsListeningForKey then
+                return
+            end
+            if input.KeyCode ~= key or gameProcessed then
+                return
+            end
+            local focusedOk, focused = pcall(function()
+                return UserInputService:GetFocusedTextBox()
+            end)
+            if focusedOk and focused then
+                return
+            end
+            if options.OnActivated then
+                pcall(options.OnActivated)
+            end
+        end)
+
+        local API = {}
+        function API:GetKey()
+            return key
+        end
+        function API:SetKey(newKey)
+            setKey(newKey)
+        end
+        function API:GetButton()
+            return action
+        end
+        function API:GetKeybindButton()
+            return keybindButton
+        end
+        function API:GetClearButton()
+            return clear
+        end
         function API:SetText(text)
             action.Text = tostring(text)
         end
