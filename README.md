@@ -701,7 +701,8 @@ All library strokes are border-only, so button and input text stays clean instea
 - Config version 2 migration from the old blue APEX theme
 - Audio feedback removed; the library does not use sound assets
 - Full SV square + hue slider + RGB color picker retained
-- Header `FULL` / `EXIT` toggle: expands the window to the screen, grows the scrollable tabs, and caps text scaling at 120% so it stays readable without ballooning
+- Header `FULL` / `EXIT` toggle: expands the window to the usable screen area below the Roblox topbar, centers it with a small margin, grows the scrollable tabs, and caps text scaling at 120% so it stays readable without ballooning
+- Reopening the window keeps its last position instead of snapping to the center mid-animation
 - The mobile claw toggle renders above the fullscreen window so mobile players cannot get trapped behind it
 
 Recent layout revisions:
@@ -713,7 +714,7 @@ Recent layout revisions:
 - Revision 9: accent color, hide key, mobile lock, and mobile button position use one shared profile across every script; desktop saves no longer reset the mobile button position.
 - Revision 10: `CreateKeybindButton` adds action cards with programmable key chips; optional rows can be cleared with `X`, while required rows cannot be cleared and never show it.
 - Revision 11: `ShowAction = false` turns a keybind action row into a keybind-only row, removing the right-side action button.
-- Revision 12: the header gains a `FULL` / `EXIT` toggle. Fullscreen expands the window and scrolling tab content to fit the viewport, scales the UI only modestly (maximum 120%), and keeps the mobile claw toggle above the window.
+- Revision 12: the header gains a `FULL` / `EXIT` toggle. Fullscreen fits and centers inside the usable screen area below the Roblox topbar, expands the scrolling tab content, and scales the UI only modestly (maximum 120%). Closing and reopening keeps the window at its last position instead of snapping, and the mobile claw toggle stays above the window.
 
 `APEX_SYS V3.6 PLUS` added `CreateButton`, `CreateSectionLabel`, `CreateListCard`, component handles, fixed color-picker initialization, popup management, unload callbacks, and keybind listening guards.
 
