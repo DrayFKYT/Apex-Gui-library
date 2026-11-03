@@ -218,7 +218,7 @@ All examples use `Apex` as the object returned by `ApexLibrary.new(config)`.
 | `Apex:CreateTab(name, sectionTitle)` | Tab object | Creates a tab. `name` is the tab label; `sectionTitle` is the header shown above its content. |
 | `Apex:SelectTab(name, silent)` | `boolean` | Activates a tab by name. Returns `true` when found. `silent` is accepted for compatibility; the library does not play audio. |
 | `Apex:SetVisible(visible)` | `nil` | Animates the window closed or open. The close animation shrinks toward the mobile claw when one exists. |
-| `Apex:SetFullscreen(enabled)` | `nil` | Enters or leaves fullscreen. The window fills the viewport, tab content grows to match, and the UI scale is capped at 120%. |
+| `Apex:SetFullscreen(enabled)` | `nil` | Enters or leaves fullscreen. The window animates to a centered panel that occupies half the viewport width and height, tab content grows to match, the content clips during the transition, and the UI scale is capped at 120%. |
 | `Apex:GetAccentColor()` | `Color3` | Returns the current accent color. |
 | `Apex:SetAccentColor(color)` | `nil` | Updates every registered accent listener and saves the setting. |
 | `Apex:RegisterAccentListener(callback)` | `nil` | Calls `callback(color)` whenever the accent color changes. |
@@ -228,7 +228,7 @@ All examples use `Apex` as the object returned by `ApexLibrary.new(config)`.
 | `Apex:CloseColorPopups()` | `nil` | Closes every open color-picker popup. |
 | `Apex:Unload()` | `nil` | Runs unload callbacks, closes pickers, and destroys the window and mobile button. |
 | `Apex.Version` | `string` | `"APEX_SYS V3.7 PLUS"` |
-| `Apex.LayoutRevision` | `number` | Current layout revision. Revision 12 adds the header fullscreen toggle. |
+| `Apex.LayoutRevision` | `number` | Current layout revision. Revision 12 adds the animated header fullscreen glyph. |
 | `Apex.ConfigVersion` | `number` | Current profile schema version (`2`). |
 | `Apex.ProfileFileName` | `string` | Shared library profile file (`"ApexLibrary_Config.json"`). |
 | `Apex.Theme` | table | Shared terminal color palette. See [Theme](#theme). |
@@ -701,7 +701,7 @@ All library strokes are border-only, so button and input text stays clean instea
 - Config version 2 migration from the old blue APEX theme
 - Audio feedback removed; the library does not use sound assets
 - Full SV square + hue slider + RGB color picker retained
-- Header `FULL` / `EXIT` toggle: expands the window to the usable screen area below the Roblox topbar, centers it with a small margin, grows the scrollable tabs, and caps text scaling at 120% so it stays readable without ballooning
+- Header fullscreen glyph: expands the window to a centered panel that occupies 50% of the usable screen width and height, grows the scrollable tabs, and caps text scaling at 120% so it stays readable without ballooning. The expand/collapse icon is drawn from corner brackets, and the transition tweens the window size, position, and UI scale while clipping the content.
 - Reopening the window keeps its last position instead of snapping to the center mid-animation
 - The mobile claw toggle renders above the fullscreen window so mobile players cannot get trapped behind it
 
@@ -714,7 +714,7 @@ Recent layout revisions:
 - Revision 9: accent color, hide key, mobile lock, and mobile button position use one shared profile across every script; desktop saves no longer reset the mobile button position.
 - Revision 10: `CreateKeybindButton` adds action cards with programmable key chips; optional rows can be cleared with `X`, while required rows cannot be cleared and never show it.
 - Revision 11: `ShowAction = false` turns a keybind action row into a keybind-only row, removing the right-side action button.
-- Revision 12: the header gains a `FULL` / `EXIT` toggle. Fullscreen fits and centers inside the usable screen area below the Roblox topbar, expands the scrolling tab content, and scales the UI only modestly (maximum 120%). Closing and reopening keeps the window at its last position instead of snapping, and the mobile claw toggle stays above the window.
+- Revision 12: the header gains a fullscreen glyph. Fullscreen becomes a centered panel covering 50% of the usable screen width and height, expands the scrolling tab content, and scales the UI only modestly (maximum 120%). The window size, position, and scale animate between layouts, and content is clipped during the transition. Closing and reopening keeps the window at its last position instead of snapping, and the mobile claw toggle stays above the window.
 
 `APEX_SYS V3.6 PLUS` added `CreateButton`, `CreateSectionLabel`, `CreateListCard`, component handles, fixed color-picker initialization, popup management, unload callbacks, and keybind listening guards.
 

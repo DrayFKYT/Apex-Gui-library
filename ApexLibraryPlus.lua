@@ -20,6 +20,7 @@ local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local HttpService = game:GetService("HttpService")
 local TweenService = game:GetService("TweenService")
+local GuiService = game:GetService("GuiService")
 
 -- // Variables
 local LocalPlayer = Players.LocalPlayer
@@ -148,7 +149,7 @@ ApexLibrary.Version = "APEX_SYS V3.7 PLUS"
 -- 9: one library-wide profile keeps UI settings across every script.
 -- 10: keybind action rows with optional or mandatory key bindings.
 -- 11: keybind rows can omit the right-side action button (`ShowAction = false`).
--- 12: header fullscreen toggle with layout-aware content resizing.
+-- 12: animated fullscreen glyph with layout-aware content resizing.
 ApexLibrary.LayoutRevision = 12
 local CONFIG_VERSION = 2
 ApexLibrary.ConfigVersion = CONFIG_VERSION
@@ -405,38 +406,63 @@ function ApexLibrary:RefreshContentLayout()
     self:UpdateTabSizes()
 end
 
+function ApexLibrary:GetWindowLayout()
+    local area = self:GetScreenArea()
+    if self.IsFullscreen then
+        local scale = self:GetFullscreenScale()
+        -- Fullscreen is a centered 50% panel, not an edge-to-edge window.
+        -- Divide by the UI scale so the on-screen size stays exactly half the
+        -- screen on every viewport.
+        local width = math.max(320, math.floor((area.X * 0.5) / scale))
+        local height = math.max(320, math.floor((area.Y * 0.5) / scale))
+        return scale, width, height, UDim2.new(0, width, 0, height), UDim2.new(0.5, 0, 0.5, 0)
+    end
+
+    local scale = math.min((area.X - 24) / 392, (area.Y - 24) / 397)
+    scale = math.min(math.max(scale, 0.6), 1)
+    local position = self.SavedNormalPosition or UDim2.new(0.5, 0, 0.5, 0)
+    return scale, 392, 397, UDim2.new(0, 392, 0, 397), position
+end
+
 function ApexLibrary:UpdateWindowLayout()
     if self.IsUnloaded or not self.MainFrame or not self.MainFrame.Parent or not self.UIScale then
         return
     end
-    local area = self:GetScreenArea()
-    if self.IsFullscreen then
-        local scale = self:GetFullscreenScale()
-        local margin = 12
-        local width = math.max(320, math.floor((area.X - margin * 2) / scale))
-        local height = math.max(320, math.floor((area.Y - margin * 2) / scale))
-        self.UIScale.Scale = scale
-        self.WindowWidth = width
-        self.WindowHeight = height
-        self.MainFrame.Size = UDim2.new(0, width, 0, height)
-        self.MainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
-    else
-        local scale = math.min((area.X - 24) / 392, (area.Y - 24) / 397)
-        self.UIScale.Scale = math.min(math.max(scale, 0.6), 1)
-        self.WindowWidth = 392
-        self.WindowHeight = 397
-        self.MainFrame.Size = UDim2.new(0, 392, 0, 397)
-        if self.SavedNormalPosition then
-            self.MainFrame.Position = self.SavedNormalPosition
-        else
-            self.MainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
-        end
-    end
+    local scale, width, height, size, position = self:GetWindowLayout()
+    self.UIScale.Scale = scale
+    self.WindowWidth = width
+    self.WindowHeight = height
+    self.MainFrame.Size = size
+    self.MainFrame.Position = position
     self:RefreshContentLayout()
 end
 
+function ApexLibrary:UpdateFullscreenGlyph()
+    local bars = self.FullscreenGlyphBars
+    if not bars then
+        return
+    end
+    local enabled = self.IsFullscreen == true
+    local color = enabled and self.AccentColor or Theme.Muted
+    for _, entry in ipairs(bars) do
+        local bar = entry.Bar
+        if bar then
+            bar.BackgroundColor3 = color
+            local x = enabled and entry.InsetX or entry.OuterX
+            local y = enabled and entry.InsetY or entry.OuterY
+            bar.Position = UDim2.new(0, x, 0, y)
+        end
+    end
+end
+
 function ApexLibrary:SetFullscreen(enabled)
-    if self.IsUnloaded or not self.MainFrame then
+    if self.IsUnloaded or not self.MainFrame or not self.UIScale then
+        return
+    end
+    -- The open/close animation owns Size and Position. Switching layouts
+    -- halfway through leaves the window at a stale offset, which looks like
+    -- the menu teleported when it finishes.
+    if self.IsAnimating then
         return
     end
     enabled = enabled == true
@@ -447,14 +473,25 @@ function ApexLibrary:SetFullscreen(enabled)
         self.SavedNormalPosition = self.MainFrame.Position
     end
     self.IsFullscreen = enabled
-    if self.FullscreenButton then
-        self.FullscreenButton.Text = enabled and "EXIT" or "FULL"
-        self.FullscreenButton.TextColor3 = enabled and self.AccentColor or Theme.Muted
-    end
-    self:UpdateWindowLayout()
-    if not enabled and self.SavedNormalPosition then
-        self.MainFrame.Position = self.SavedNormalPosition
-    end
+    self:UpdateFullscreenGlyph()
+
+    local targetScale, width, height, targetSize, targetPosition = self:GetWindowLayout()
+    self.WindowWidth = width
+    self.WindowHeight = height
+    self:RefreshContentLayout()
+
+    -- Animate the window between the compact and fullscreen layouts. The
+    -- window stays clipped so content never spills outside the frame.
+    self.MainFrame.ClipsDescendants = true
+
+    local info = TweenInfo.new(0.32, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+    TweenService:Create(self.MainFrame, info, {
+        Size = targetSize,
+        Position = targetPosition
+    }):Play()
+    TweenService:Create(self.UIScale, info, {
+        Scale = targetScale
+    }):Play()
 end
 
 function ApexLibrary:BuildGUI()
@@ -568,30 +605,66 @@ function ApexLibrary:BuildGUI()
     LuaBadge.Parent = HeaderBar
 
     -- Fullscreen toggle, pinned to the top right of the header next to LUAU.
+    -- The control is a drawn expand/collapse glyph rather than text.
     local FullscreenButton = Instance.new("TextButton")
     FullscreenButton.Name = "FullscreenButton"
     FullscreenButton.Size = UDim2.new(0, 40, 0, 20)
     FullscreenButton.Position = UDim2.new(1, -94, 0.5, -10)
     FullscreenButton.BackgroundColor3 = Theme.Input
     FullscreenButton.BorderSizePixel = 0
-    FullscreenButton.Font = Enum.Font.RobotoMono
-    FullscreenButton.Text = "FULL"
-    FullscreenButton.TextColor3 = Theme.Muted
-    FullscreenButton.TextSize = FontSize(10)
     FullscreenButton.AutoButtonColor = false
+    FullscreenButton.Text = ""
     FullscreenButton.Parent = HeaderBar
     local fullscreenStroke = CreateStroke(FullscreenButton)
     fullscreenStroke.Color = Theme.Border
     fullscreenStroke.Thickness = 1
+
+    local FullscreenGlyph = Instance.new("Frame")
+    FullscreenGlyph.Name = "FullscreenGlyph"
+    FullscreenGlyph.AnchorPoint = Vector2.new(0.5, 0.5)
+    FullscreenGlyph.Position = UDim2.new(0.5, 0, 0.5, 0)
+    FullscreenGlyph.Size = UDim2.new(0, 16, 0, 16)
+    FullscreenGlyph.BackgroundTransparency = 1
+    FullscreenGlyph.Parent = FullscreenButton
+
+    local FullscreenBars = {}
+    local function AddFullscreenBar(name, x, y, width, height, insetX, insetY)
+        local bar = Instance.new("Frame")
+        bar.Name = name
+        bar.Position = UDim2.new(0, x, 0, y)
+        bar.Size = UDim2.new(0, width, 0, height)
+        bar.BackgroundColor3 = Theme.Muted
+        bar.BorderSizePixel = 0
+        bar.Parent = FullscreenGlyph
+        FullscreenBars[#FullscreenBars + 1] = {
+            Bar = bar,
+            OuterX = x,
+            OuterY = y,
+            InsetX = insetX,
+            InsetY = insetY
+        }
+    end
+    AddFullscreenBar("TLH", 0, 0, 6, 2, 2, 2)
+    AddFullscreenBar("TLV", 0, 0, 2, 6, 2, 2)
+    AddFullscreenBar("TRH", 10, 0, 6, 2, 8, 2)
+    AddFullscreenBar("TRV", 14, 0, 2, 6, 12, 2)
+    AddFullscreenBar("BLH", 0, 14, 6, 2, 2, 12)
+    AddFullscreenBar("BLV", 0, 10, 2, 6, 2, 8)
+    AddFullscreenBar("BRH", 10, 14, 6, 2, 8, 12)
+    AddFullscreenBar("BRV", 14, 10, 2, 6, 12, 8)
+    AddFullscreenBar("CenterDot", 6, 6, 4, 4, 6, 6)
+
     FullscreenButton.Activated:Connect(function()
         self:SetFullscreen(not self.IsFullscreen)
     end)
-    self:RegisterAccentListener(function(col)
+    self:RegisterAccentListener(function()
         if self.IsFullscreen then
-            FullscreenButton.TextColor3 = col
+            self:UpdateFullscreenGlyph()
         end
     end)
     self.FullscreenButton = FullscreenButton
+    self.FullscreenGlyph = FullscreenGlyph
+    self.FullscreenGlyphBars = FullscreenBars
 
     -- Equal-width tab bar. The first tab is created by the caller.
     local TabBar = Instance.new("ScrollingFrame")
@@ -715,15 +788,29 @@ function ApexLibrary:BuildGUI()
 
     -- Draggable Window Logic (disabled while fullscreen)
     local dragging, dragStart, startPos = false, nil, nil
+
+    -- InputObject.Position uses raw screen coordinates (including the Roblox
+    -- topbar) while GuiObject.AbsolutePosition is relative to the ScreenGui
+    -- content area. Without removing the inset, the fullscreen button's
+    -- hit-test is shifted by 58px and a press on the header starts a drag.
+    local function ScreenToGuiPoint(position)
+        local inset = Vector2.new(0, 0)
+        pcall(function()
+            inset = GuiService:GetGuiInset()
+        end)
+        return Vector2.new(position.X - inset.X, position.Y - inset.Y)
+    end
+
     local function IsOverFullscreenButton(position)
         local button = self.FullscreenButton
         if not button or not position then
             return false
         end
+        local point = ScreenToGuiPoint(position)
         local origin = button.AbsolutePosition
         local size = button.AbsoluteSize
-        return position.X >= origin.X and position.X <= origin.X + size.X
-            and position.Y >= origin.Y and position.Y <= origin.Y + size.Y
+        return point.X >= origin.X and point.X <= origin.X + size.X
+            and point.Y >= origin.Y and point.Y <= origin.Y + size.Y
     end
     HeaderBar.InputBegan:Connect(function(input)
         if self.IsFullscreen or self.IsAnimating or IsOverFullscreenButton(input.Position) then
