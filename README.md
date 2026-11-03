@@ -218,6 +218,7 @@ All examples use `Apex` as the object returned by `ApexLibrary.new(config)`.
 | `Apex:CreateTab(name, sectionTitle)` | Tab object | Creates a tab. `name` is the tab label; `sectionTitle` is the header shown above its content. |
 | `Apex:SelectTab(name, silent)` | `boolean` | Activates a tab by name. Returns `true` when found. `silent` is accepted for compatibility; the library does not play audio. |
 | `Apex:SetVisible(visible)` | `nil` | Animates the window closed or open. The close animation shrinks toward the mobile claw when one exists. |
+| `Apex:SetFullscreen(enabled)` | `nil` | Enters or leaves fullscreen. The window fills the viewport, tab content grows to match, and the UI scale is capped at 120%. |
 | `Apex:GetAccentColor()` | `Color3` | Returns the current accent color. |
 | `Apex:SetAccentColor(color)` | `nil` | Updates every registered accent listener and saves the setting. |
 | `Apex:RegisterAccentListener(callback)` | `nil` | Calls `callback(color)` whenever the accent color changes. |
@@ -227,13 +228,14 @@ All examples use `Apex` as the object returned by `ApexLibrary.new(config)`.
 | `Apex:CloseColorPopups()` | `nil` | Closes every open color-picker popup. |
 | `Apex:Unload()` | `nil` | Runs unload callbacks, closes pickers, and destroys the window and mobile button. |
 | `Apex.Version` | `string` | `"APEX_SYS V3.7 PLUS"` |
-| `Apex.LayoutRevision` | `number` | Current layout revision. Revision 11 allows keybind rows without an action button. |
+| `Apex.LayoutRevision` | `number` | Current layout revision. Revision 12 adds the header fullscreen toggle. |
 | `Apex.ConfigVersion` | `number` | Current profile schema version (`2`). |
 | `Apex.ProfileFileName` | `string` | Shared library profile file (`"ApexLibrary_Config.json"`). |
 | `Apex.Theme` | table | Shared terminal color palette. See [Theme](#theme). |
 | `Apex.CurrentHideKey` | `Enum.KeyCode` | The active hide key. |
 | `Apex.AccentColor` | `Color3` | The active accent color. |
 | `Apex.IsUIVisible` | `boolean` | Whether the main window is currently open. |
+| `Apex.IsFullscreen` | `boolean` | Whether the window is currently in fullscreen mode. |
 
 `Apex:Unload()` destroys the library GUI, but it does **not** stop your own loops or disconnect your own events automatically. Register an unload callback for that:
 
@@ -258,6 +260,9 @@ These are used internally by the library. They are available if you build custom
 | `Apex:EnsureTabVisible(entry)` | Scrolls a tab entry into view. |
 | `Apex:UpdateTabSizes()` | Recalculates tab widths after tabs are added. |
 | `Apex:ActivateTab(entry, silent)` | Low-level tab switch that takes a tab entry rather than a tab name. |
+| `Apex:UpdateWindowLayout()` | Refits the window and content area for the current viewport and fullscreen state. |
+| `Apex:RefreshContentLayout()` | Recalculates tab content heights after a layout change. |
+| `Apex:GetWindowSize()` | Returns the current window `UDim2` size. |
 
 ## Tab API
 
@@ -696,6 +701,8 @@ All library strokes are border-only, so button and input text stays clean instea
 - Config version 2 migration from the old blue APEX theme
 - Audio feedback removed; the library does not use sound assets
 - Full SV square + hue slider + RGB color picker retained
+- Header `FULL` / `EXIT` toggle: expands the window to the screen, grows the scrollable tabs, and caps text scaling at 120% so it stays readable without ballooning
+- The mobile claw toggle renders above the fullscreen window so mobile players cannot get trapped behind it
 
 Recent layout revisions:
 
@@ -706,6 +713,7 @@ Recent layout revisions:
 - Revision 9: accent color, hide key, mobile lock, and mobile button position use one shared profile across every script; desktop saves no longer reset the mobile button position.
 - Revision 10: `CreateKeybindButton` adds action cards with programmable key chips; optional rows can be cleared with `X`, while required rows cannot be cleared and never show it.
 - Revision 11: `ShowAction = false` turns a keybind action row into a keybind-only row, removing the right-side action button.
+- Revision 12: the header gains a `FULL` / `EXIT` toggle. Fullscreen expands the window and scrolling tab content to fit the viewport, scales the UI only modestly (maximum 120%), and keeps the mobile claw toggle above the window.
 
 `APEX_SYS V3.6 PLUS` added `CreateButton`, `CreateSectionLabel`, `CreateListCard`, component handles, fixed color-picker initialization, popup management, unload callbacks, and keybind listening guards.
 

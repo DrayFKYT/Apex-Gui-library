@@ -148,7 +148,8 @@ ApexLibrary.Version = "APEX_SYS V3.7 PLUS"
 -- 9: one library-wide profile keeps UI settings across every script.
 -- 10: keybind action rows with optional or mandatory key bindings.
 -- 11: keybind rows can omit the right-side action button (`ShowAction = false`).
-ApexLibrary.LayoutRevision = 11
+-- 12: header fullscreen toggle with layout-aware content resizing.
+ApexLibrary.LayoutRevision = 12
 local CONFIG_VERSION = 2
 ApexLibrary.ConfigVersion = CONFIG_VERSION
 ApexLibrary.ProfileFileName = ConfigFile
@@ -175,6 +176,8 @@ function ApexLibrary.new(config)
     }
     self.AccentColor = config.AccentColor or Theme.Accent
     self.MobileButtonRef = nil
+    self.IsFullscreen = false
+    self.SavedNormalPosition = nil
     self.AccentUpdateCallbacks = {}
     self.ColorPopups = {}
     self.UnloadCallbacks = {}
@@ -351,6 +354,93 @@ function ApexLibrary:SaveSettings()
     })
 end
 
+function ApexLibrary:GetWindowSize()
+    return UDim2.new(0, self.WindowWidth or 392, 0, self.WindowHeight or 397)
+end
+
+function ApexLibrary:GetFullscreenScale()
+    local camera = workspace.CurrentCamera
+    local viewport = camera and camera.ViewportSize or Vector2.new(1280, 720)
+    return math.clamp(math.min(viewport.X / 1600, viewport.Y / 900), 1, 1.2)
+end
+
+function ApexLibrary:GetAvailableContentHeight()
+    local height = self.WindowHeight or 397
+    return math.max(120, height - 181)
+end
+
+function ApexLibrary:GetTabContentHeight(entry)
+    if entry and entry.KillButton then
+        return math.min(entry.KillContentHeight or self.ContentKillHeight, self.ContentKillHeight)
+    end
+    return self.ContentFullHeight
+end
+
+function ApexLibrary:RefreshContentLayout()
+    if not self.MainFrame or not self.MainFrame.Parent or not self.TabBar then
+        return
+    end
+    self.ContentFullHeight = self:GetAvailableContentHeight()
+    self.ContentKillHeight = math.max(100, (self.WindowHeight or 397) - 237)
+    for _, tab in ipairs(self.TabButtonsList or {}) do
+        tab.Container.Size = UDim2.new(1, -36, 0, self:GetTabContentHeight(tab))
+    end
+    self:UpdateTabSizes()
+end
+
+function ApexLibrary:UpdateWindowLayout()
+    if self.IsUnloaded or not self.MainFrame or not self.MainFrame.Parent or not self.UIScale then
+        return
+    end
+    local camera = workspace.CurrentCamera
+    local viewport = camera and camera.ViewportSize or Vector2.new(1280, 720)
+    if self.IsFullscreen then
+        local scale = self:GetFullscreenScale()
+        local margin = 12
+        local width = math.max(320, math.floor((viewport.X - margin * 2) / scale))
+        local height = math.max(320, math.floor((viewport.Y - margin * 2) / scale))
+        self.UIScale.Scale = scale
+        self.WindowWidth = width
+        self.WindowHeight = height
+        self.MainFrame.Size = UDim2.new(0, width, 0, height)
+        self.MainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+    else
+        local scale = math.min((viewport.X - 24) / 392, (viewport.Y - 24) / 397)
+        self.UIScale.Scale = math.min(math.max(scale, 0.6), 1)
+        self.WindowWidth = 392
+        self.WindowHeight = 397
+        self.MainFrame.Size = UDim2.new(0, 392, 0, 397)
+        if self.SavedNormalPosition then
+            self.MainFrame.Position = self.SavedNormalPosition
+        else
+            self.MainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+        end
+    end
+    self:RefreshContentLayout()
+end
+
+function ApexLibrary:SetFullscreen(enabled)
+    if self.IsUnloaded or not self.MainFrame then
+        return
+    end
+    enabled = enabled == true
+    if self.IsFullscreen == enabled then
+        return
+    end
+    if enabled then
+        self.SavedNormalPosition = self.MainFrame.Position
+    end
+    self.IsFullscreen = enabled
+    if self.FullscreenButton then
+        self.FullscreenButton.Text = enabled and "EXIT" or "FULL"
+        self.FullscreenButton.TextColor3 = enabled and self.AccentColor or Theme.Muted
+    end
+    self:UpdateWindowLayout()
+    if not enabled and self.SavedNormalPosition then
+        self.MainFrame.Position = self.SavedNormalPosition
+    end
+end
+
 function ApexLibrary:BuildGUI()
     -- If the class table is reused in the same executor session, make sure a
     -- previous ScreenGui/mobile button cannot stack on top of the new one.
@@ -390,18 +480,16 @@ function ApexLibrary:BuildGUI()
     -- Desktop text is enlarged at its native size instead of scaling the UI.
     local UIScale = Instance.new("UIScale")
     UIScale.Parent = MainFrame
-    local function UpdateUIScale()
-        if not UIScale or not UIScale.Parent then
-            return
-        end
-        local camera = workspace.CurrentCamera
-        local viewport = camera and camera.ViewportSize or Vector2.new(1280, 720)
-        local scale = math.min((viewport.X - 24) / WINDOW_W, (viewport.Y - 24) / WINDOW_H)
-        UIScale.Scale = math.min(math.max(scale, 0.6), 1)
-    end
-    UpdateUIScale()
+
+    -- The library owns window sizing so fullscreen can expand the content
+    -- viewport and raise the scale slightly without blowing up the text.
+    self.MainFrame = MainFrame
+    self.UIScale = UIScale
+    self:UpdateWindowLayout()
     if workspace.CurrentCamera then
-        workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(UpdateUIScale)
+        workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
+            self:UpdateWindowLayout()
+        end)
     end
 
     local MainStroke = CreateStroke(MainFrame)
@@ -437,7 +525,7 @@ function ApexLibrary:BuildGUI()
     end)
 
     local TitleLabel = Instance.new("TextLabel")
-    TitleLabel.Size = UDim2.new(1, -112, 1, 0)
+    TitleLabel.Size = UDim2.new(1, -132, 1, 0)
     TitleLabel.Position = UDim2.new(0, 32, 0, 0)
     TitleLabel.BackgroundTransparency = 1
     TitleLabel.Font = Enum.Font.RobotoMono
@@ -461,6 +549,32 @@ function ApexLibrary:BuildGUI()
     LuaBadge.TextColor3 = Theme.Muted
     LuaBadge.TextSize = FontSize(10)
     LuaBadge.Parent = HeaderBar
+
+    -- Fullscreen toggle, pinned to the top right of the header next to LUAU.
+    local FullscreenButton = Instance.new("TextButton")
+    FullscreenButton.Name = "FullscreenButton"
+    FullscreenButton.Size = UDim2.new(0, 40, 0, 20)
+    FullscreenButton.Position = UDim2.new(1, -94, 0.5, -10)
+    FullscreenButton.BackgroundColor3 = Theme.Input
+    FullscreenButton.BorderSizePixel = 0
+    FullscreenButton.Font = Enum.Font.RobotoMono
+    FullscreenButton.Text = "FULL"
+    FullscreenButton.TextColor3 = Theme.Muted
+    FullscreenButton.TextSize = FontSize(10)
+    FullscreenButton.AutoButtonColor = false
+    FullscreenButton.Parent = HeaderBar
+    local fullscreenStroke = CreateStroke(FullscreenButton)
+    fullscreenStroke.Color = Theme.Border
+    fullscreenStroke.Thickness = 1
+    FullscreenButton.Activated:Connect(function()
+        self:SetFullscreen(not self.IsFullscreen)
+    end)
+    self:RegisterAccentListener(function(col)
+        if self.IsFullscreen then
+            FullscreenButton.TextColor3 = col
+        end
+    end)
+    self.FullscreenButton = FullscreenButton
 
     -- Equal-width tab bar. The first tab is created by the caller.
     local TabBar = Instance.new("ScrollingFrame")
@@ -582,9 +696,12 @@ function ApexLibrary:BuildGUI()
     BrandLabel.TextXAlignment = Enum.TextXAlignment.Right
     BrandLabel.Parent = FooterBar
 
-    -- Draggable Window Logic
+    -- Draggable Window Logic (disabled while fullscreen)
     local dragging, dragStart, startPos = false, nil, nil
     HeaderBar.InputBegan:Connect(function(input)
+        if self.IsFullscreen then
+            return
+        end
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
             dragging = true
             dragStart = input.Position
@@ -592,7 +709,7 @@ function ApexLibrary:BuildGUI()
         end
     end)
     UserInputService.InputChanged:Connect(function(input)
-        if self.IsUnloaded or not MainFrame.Parent then
+        if self.IsUnloaded or not MainFrame.Parent or self.IsFullscreen then
             return
         end
         if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
@@ -607,6 +724,9 @@ function ApexLibrary:BuildGUI()
     end)
     UserInputService.InputEnded:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            if dragging and not self.IsFullscreen then
+                self.SavedNormalPosition = MainFrame.Position
+            end
             dragging = false
         end
     end)
@@ -653,32 +773,37 @@ function ApexLibrary:BuildGUI()
 
         if visible then
             MainFrame.Visible = true
+            local buttonScale = (self.UIScale and self.UIScale.Scale) or 1
             local startPos = self.MobileButtonRef and UDim2.new(
                 0,
-                self.MobileButtonRef.AbsolutePosition.X + 27,
+                (self.MobileButtonRef.AbsolutePosition.X + 27) / buttonScale,
                 0,
-                self.MobileButtonRef.AbsolutePosition.Y + 27
+                (self.MobileButtonRef.AbsolutePosition.Y + 27) / buttonScale
             ) or UDim2.new(0.5, 0, 0.5, 0)
+            local windowSize = self:GetWindowSize()
+            local endPos = UDim2.new(0.5, 0, 0.5, 0)
             MainFrame.Position = startPos
             MainFrame.Size = UDim2.new(0, 54, 0, 54)
             MainFrame.GroupTransparency = 1
 
             local tween = TweenService:Create(MainFrame, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-                Size = UDim2.new(0, WINDOW_W, 0, WINDOW_H),
-                Position = UDim2.new(0.5, 0, 0.5, 0),
+                Size = windowSize,
+                Position = endPos,
                 GroupTransparency = 0
             })
             tween:Play()
             tween.Completed:Wait()
             self.IsUIVisible = true
             self.IsAnimating = false
+            self:UpdateWindowLayout()
         else
             self:CloseColorPopups()
+            local buttonScale = (self.UIScale and self.UIScale.Scale) or 1
             local targetPos = self.MobileButtonRef and UDim2.new(
                 0,
-                self.MobileButtonRef.AbsolutePosition.X + 27,
+                (self.MobileButtonRef.AbsolutePosition.X + 27) / buttonScale,
                 0,
-                self.MobileButtonRef.AbsolutePosition.Y + 27
+                (self.MobileButtonRef.AbsolutePosition.Y + 27) / buttonScale
             ) or UDim2.new(0.5, 0, 0.5, 0)
             local tween = TweenService:Create(MainFrame, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
                 Size = UDim2.new(0, 54, 0, 54),
@@ -711,7 +836,7 @@ function ApexLibrary:BuildGUI()
         MobileScreenGui.Name = "ApexMobileButtonGui"
         MobileScreenGui.ResetOnSpawn = false
         MobileScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-        MobileScreenGui.DisplayOrder = 999999
+        MobileScreenGui.DisplayOrder = 1000000
         MobileScreenGui.Parent = PlayerGui
 
         local MobileButton = Instance.new("TextButton")
@@ -1203,6 +1328,9 @@ function ApexLibrary:EnsureTabVisible(entry)
 end
 
 function ApexLibrary:UpdateTabSizes()
+    if not self.TabBar then
+        return
+    end
     local count = math.max(#self.TabButtonsList, 1)
     -- Four full tabs fit at the native 392px width. Once a script adds a
     -- fifth, keep each tab readable and let the bar scroll horizontally
@@ -1252,7 +1380,7 @@ function ApexLibrary:ActivateTab(entry, silent)
         tab.Button.TextColor3 = Theme.Muted
         tab.Line.Visible = false
         tab.Container.Visible = false
-        tab.Container.Size = UDim2.new(1, -36, 0, self.ContentFullHeight)
+        tab.Container.Size = UDim2.new(1, -36, 0, self:GetTabContentHeight(tab))
         if tab.KillButton then
             tab.KillButton.Visible = false
         end
@@ -1265,7 +1393,7 @@ function ApexLibrary:ActivateTab(entry, silent)
     entry.Container.Visible = true
     if entry.KillButton then
         entry.KillButton.Visible = true
-        entry.Container.Size = UDim2.new(1, -36, 0, entry.KillContentHeight or self.ContentKillHeight)
+        entry.Container.Size = UDim2.new(1, -36, 0, self:GetTabContentHeight(entry))
     end
     self.SectionHeader.Text = entry.SectionTitle
     self.ActiveTabName = entry.Name
