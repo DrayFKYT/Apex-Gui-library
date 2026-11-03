@@ -715,8 +715,18 @@ function ApexLibrary:BuildGUI()
 
     -- Draggable Window Logic (disabled while fullscreen)
     local dragging, dragStart, startPos = false, nil, nil
+    local function IsOverFullscreenButton(position)
+        local button = self.FullscreenButton
+        if not button or not position then
+            return false
+        end
+        local origin = button.AbsolutePosition
+        local size = button.AbsoluteSize
+        return position.X >= origin.X and position.X <= origin.X + size.X
+            and position.Y >= origin.Y and position.Y <= origin.Y + size.Y
+    end
     HeaderBar.InputBegan:Connect(function(input)
-        if self.IsFullscreen then
+        if self.IsFullscreen or self.IsAnimating or IsOverFullscreenButton(input.Position) then
             return
         end
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -726,7 +736,7 @@ function ApexLibrary:BuildGUI()
         end
     end)
     UserInputService.InputChanged:Connect(function(input)
-        if self.IsUnloaded or not MainFrame.Parent or self.IsFullscreen then
+        if self.IsUnloaded or not MainFrame.Parent or self.IsFullscreen or self.IsAnimating then
             return
         end
         if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
@@ -741,7 +751,7 @@ function ApexLibrary:BuildGUI()
     end)
     UserInputService.InputEnded:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            if dragging and not self.IsFullscreen then
+            if dragging and not self.IsFullscreen and not self.IsAnimating then
                 self.SavedNormalPosition = MainFrame.Position
             end
             dragging = false
@@ -790,15 +800,24 @@ function ApexLibrary:BuildGUI()
 
         if visible then
             MainFrame.Visible = true
+            -- Resolve the target layout before animating so the window does
+            -- not finish the tween and then snap to a different position.
+            self:UpdateWindowLayout()
+            local center = UDim2.new(0.5, 0, 0.5, 0)
+            local endPos = self.IsFullscreen and center or (self.SavedNormalPosition or center)
             local buttonScale = (self.UIScale and self.UIScale.Scale) or 1
-            local startPos = self.MobileButtonRef and UDim2.new(
-                0,
-                (self.MobileButtonRef.AbsolutePosition.X + 27) / buttonScale,
-                0,
-                (self.MobileButtonRef.AbsolutePosition.Y + 27) / buttonScale
-            ) or UDim2.new(0.5, 0, 0.5, 0)
+            local startPos = center
+            if self.MobileButtonRef then
+                startPos = UDim2.new(
+                    0,
+                    (self.MobileButtonRef.AbsolutePosition.X + 27) / buttonScale,
+                    0,
+                    (self.MobileButtonRef.AbsolutePosition.Y + 27) / buttonScale
+                )
+            else
+                startPos = MainFrame.Position
+            end
             local windowSize = self:GetWindowSize()
-            local endPos = UDim2.new(0.5, 0, 0.5, 0)
             MainFrame.Position = startPos
             MainFrame.Size = UDim2.new(0, 54, 0, 54)
             MainFrame.GroupTransparency = 1
@@ -812,16 +831,18 @@ function ApexLibrary:BuildGUI()
             tween.Completed:Wait()
             self.IsUIVisible = true
             self.IsAnimating = false
-            self:UpdateWindowLayout()
         else
             self:CloseColorPopups()
             local buttonScale = (self.UIScale and self.UIScale.Scale) or 1
-            local targetPos = self.MobileButtonRef and UDim2.new(
-                0,
-                (self.MobileButtonRef.AbsolutePosition.X + 27) / buttonScale,
-                0,
-                (self.MobileButtonRef.AbsolutePosition.Y + 27) / buttonScale
-            ) or UDim2.new(0.5, 0, 0.5, 0)
+            local targetPos = MainFrame.Position
+            if self.MobileButtonRef then
+                targetPos = UDim2.new(
+                    0,
+                    (self.MobileButtonRef.AbsolutePosition.X + 27) / buttonScale,
+                    0,
+                    (self.MobileButtonRef.AbsolutePosition.Y + 27) / buttonScale
+                )
+            end
             local tween = TweenService:Create(MainFrame, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
                 Size = UDim2.new(0, 54, 0, 54),
                 Position = targetPos,
