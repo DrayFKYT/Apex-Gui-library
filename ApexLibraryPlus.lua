@@ -358,10 +358,27 @@ function ApexLibrary:GetWindowSize()
     return UDim2.new(0, self.WindowWidth or 392, 0, self.WindowHeight or 397)
 end
 
-function ApexLibrary:GetFullscreenScale()
+-- ScreenGui content size excludes the Roblox topbar inset. Using the camera
+-- viewport made the fullscreen window taller than the usable area, so the
+-- footer was clipped below the screen.
+function ApexLibrary:GetScreenArea()
     local camera = workspace.CurrentCamera
-    local viewport = camera and camera.ViewportSize or Vector2.new(1280, 720)
-    return math.clamp(math.min(viewport.X / 1600, viewport.Y / 900), 1, 1.2)
+    local area = camera and camera.ViewportSize or Vector2.new(1280, 720)
+    local gui = self.ScreenGui
+    if gui then
+        local ok, abs = pcall(function()
+            return gui.AbsoluteSize
+        end)
+        if ok and abs and tonumber(abs.X) and tonumber(abs.Y) and abs.X > 0 and abs.Y > 0 then
+            area = abs
+        end
+    end
+    return area
+end
+
+function ApexLibrary:GetFullscreenScale()
+    local area = self:GetScreenArea()
+    return math.clamp(math.min(area.X / 1600, area.Y / 900), 1, 1.2)
 end
 
 function ApexLibrary:GetAvailableContentHeight()
@@ -392,20 +409,19 @@ function ApexLibrary:UpdateWindowLayout()
     if self.IsUnloaded or not self.MainFrame or not self.MainFrame.Parent or not self.UIScale then
         return
     end
-    local camera = workspace.CurrentCamera
-    local viewport = camera and camera.ViewportSize or Vector2.new(1280, 720)
+    local area = self:GetScreenArea()
     if self.IsFullscreen then
         local scale = self:GetFullscreenScale()
         local margin = 12
-        local width = math.max(320, math.floor((viewport.X - margin * 2) / scale))
-        local height = math.max(320, math.floor((viewport.Y - margin * 2) / scale))
+        local width = math.max(320, math.floor((area.X - margin * 2) / scale))
+        local height = math.max(320, math.floor((area.Y - margin * 2) / scale))
         self.UIScale.Scale = scale
         self.WindowWidth = width
         self.WindowHeight = height
         self.MainFrame.Size = UDim2.new(0, width, 0, height)
         self.MainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
     else
-        local scale = math.min((viewport.X - 24) / 392, (viewport.Y - 24) / 397)
+        local scale = math.min((area.X - 24) / 392, (area.Y - 24) / 397)
         self.UIScale.Scale = math.min(math.max(scale, 0.6), 1)
         self.WindowWidth = 392
         self.WindowHeight = 397
@@ -465,6 +481,7 @@ function ApexLibrary:BuildGUI()
     ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     ScreenGui.DisplayOrder = 999999
     ScreenGui.Parent = PlayerGui
+    self.ScreenGui = ScreenGui
 
     local MainFrame = Instance.new("CanvasGroup")
     MainFrame.Name = "MainFrame"
