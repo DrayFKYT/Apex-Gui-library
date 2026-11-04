@@ -151,7 +151,8 @@ ApexLibrary.Version = "APEX_SYS V3.7 PLUS"
 -- 11: keybind rows can omit the right-side action button (`ShowAction = false`).
 -- 12: animated fullscreen glyph with layout-aware content resizing.
 -- 13: fullscreen is 50% wide and 70% tall, with two tab panes side by side.
-ApexLibrary.LayoutRevision = 13
+-- 14: fullscreen tabs are placed with a per-pane + button.
+ApexLibrary.LayoutRevision = 14
 local CONFIG_VERSION = 2
 ApexLibrary.ConfigVersion = CONFIG_VERSION
 ApexLibrary.ProfileFileName = ConfigFile
@@ -181,6 +182,7 @@ function ApexLibrary.new(config)
     self.IsFullscreen = false
     self.SavedNormalPosition = nil
     self.SecondaryTabName = nil
+    self.PendingTabName = nil
     self.AccentUpdateCallbacks = {}
     self.ColorPopups = {}
     self.UnloadCallbacks = {}
@@ -424,7 +426,7 @@ function ApexLibrary:GetNextTabEntry(entry)
     return list[1]
 end
 
-function ApexLibrary:StyleTabEntry(entry, active, secondary)
+function ApexLibrary:StyleTabEntry(entry, active, secondary, pending)
     if not entry then
         return
     end
@@ -439,6 +441,14 @@ function ApexLibrary:StyleTabEntry(entry, active, secondary)
         entry.Button.TextColor3 = Theme.Text
         entry.Line.BackgroundColor3 = self.AccentColor
         entry.Line.BackgroundTransparency = 0.45
+        entry.Line.Visible = true
+    elseif pending then
+        -- Fullscreen selection: the tab is armed for a + button, but it is not
+        -- occupying a pane yet.
+        entry.Button.BackgroundColor3 = Theme.TabActive
+        entry.Button.TextColor3 = self.AccentColor
+        entry.Line.BackgroundColor3 = self.AccentColor
+        entry.Line.BackgroundTransparency = 0.15
         entry.Line.Visible = true
     else
         entry.Button.BackgroundColor3 = Theme.TabBar
@@ -465,30 +475,125 @@ function ApexLibrary:PositionKillButton(entry, splitSide)
     end
 end
 
--- Fullscreen shows the selected tab on the left and the previously viewed tab
--- on the right, so two panels are usable at once. Normal mode keeps one tab.
+function ApexLibrary:UpdatePaneAddButtons()
+    if not self.PaneAddLeft or not self.PaneAddRight then
+        return
+    end
+
+    local split = self.IsFullscreen and #(self.TabButtonsList or {}) >= 2
+    self.PaneAddLeft.Visible = split
+    self.PaneAddRight.Visible = split
+    if not split then
+        return
+    end
+
+    local left = self:FindTabEntry(self.ActiveTabName)
+    local right = self:FindTabEntry(self.SecondaryTabName)
+    local pending = self:FindTabEntry(self.PendingTabName) or left
+    local canPlaceLeft = pending ~= nil and pending ~= left
+    local canPlaceRight = pending ~= nil and pending ~= right
+
+    self.PaneAddLeft.TextColor3 = canPlaceLeft and self.AccentColor or Theme.Muted
+    self.PaneAddRight.TextColor3 = canPlaceRight and self.AccentColor or Theme.Muted
+    if self.PaneAddLeftStroke then
+        self.PaneAddLeftStroke.Color = canPlaceLeft and self.AccentColor or Theme.Border
+    end
+    if self.PaneAddRightStroke then
+        self.PaneAddRightStroke.Color = canPlaceRight and self.AccentColor or Theme.Border
+    end
+end
+
+-- The + button on a pane places the currently selected tab there. If the tab
+-- already occupies the other pane, the two panes swap instead of duplicating.
+function ApexLibrary:AssignTabToPane(side, tabName)
+    if not self.IsFullscreen or (side ~= "left" and side ~= "right") then
+        return
+    end
+    if #(self.TabButtonsList or {}) < 2 then
+        return
+    end
+
+    local pending = self:FindTabEntry(tabName or self.PendingTabName or self.ActiveTabName)
+    if not pending then
+        return
+    end
+
+    local left = self:FindTabEntry(self.ActiveTabName)
+    local right = self:FindTabEntry(self.SecondaryTabName)
+    if side == "left" then
+        if left == pending then
+            return
+        end
+        self.ActiveTabName = pending.Name
+        if right == pending then
+            self.SecondaryTabName = left and left.Name or nil
+        end
+    else
+        if right == pending then
+            return
+        end
+        if left == pending then
+            if not right then
+                return
+            end
+            self.ActiveTabName = right.Name
+        end
+        self.SecondaryTabName = pending.Name
+    end
+
+    self.PendingTabName = pending.Name
+    self:ApplyTabLayouts()
+    self:CloseColorPopups()
+end
+
+-- In fullscreen a tab-bar click only arms the tab. The + buttons choose which
+-- pane receives it. Programmatic Select() still activates the tab immediately.
+function ApexLibrary:HandleTabClick(entry)
+    if self.IsUnloaded or not entry then
+        return
+    end
+
+    if self.IsFullscreen and #(self.TabButtonsList or {}) >= 2 then
+        self.PendingTabName = entry.Name
+        self:ApplyTabLayouts()
+        self:EnsureTabVisible(entry)
+        self:CloseColorPopups()
+        return
+    end
+
+    self:ActivateTab(entry)
+end
+
+-- Fullscreen shows two assigned tabs. The left pane defaults to the active tab
+-- and the right pane to the previously viewed tab.
 function ApexLibrary:ApplyTabLayouts()
     if not self.MainFrame or not self.MainFrame.Parent or not self.SectionHeader then
         return
     end
 
     local list = self.TabButtonsList or {}
-    local active = self:FindTabEntry(self.ActiveTabName)
-    if not active and #list > 0 then
-        active = list[1]
-        self.ActiveTabName = active.Name
+    local left = self:FindTabEntry(self.ActiveTabName)
+    if not left and #list > 0 then
+        left = list[1]
+        self.ActiveTabName = left.Name
     end
 
-    local secondary = nil
-    if self.IsFullscreen and #list >= 2 and active then
-        secondary = self:FindTabEntry(self.SecondaryTabName)
-        if not secondary or secondary == active then
-            secondary = self:GetNextTabEntry(active)
+    local right = nil
+    if self.IsFullscreen and #list >= 2 and left then
+        right = self:FindTabEntry(self.SecondaryTabName)
+        if not right or right == left then
+            right = self:GetNextTabEntry(left)
         end
-        self.SecondaryTabName = secondary and secondary.Name or nil
+        self.SecondaryTabName = right and right.Name or nil
     end
 
-    local split = self.IsFullscreen and active ~= nil and secondary ~= nil
+    local split = self.IsFullscreen and left ~= nil and right ~= nil and right ~= left
+    local pending = self:FindTabEntry(self.PendingTabName)
+    if not pending then
+        pending = left
+        self.PendingTabName = pending and pending.Name or nil
+    end
+
     for _, tab in ipairs(list) do
         tab.Container.Visible = false
         tab.Container.Position = UDim2.new(0, 18, 0, 141)
@@ -500,34 +605,40 @@ function ApexLibrary:ApplyTabLayouts()
         self:StyleTabEntry(tab, false, false)
     end
 
-    if active then
-        active.Container.Visible = true
+    if left then
+        left.Container.Visible = true
         if split then
-            active.Container.Size = UDim2.new(0.5, -25, 0, self:GetTabContentHeight(active))
+            left.Container.Size = UDim2.new(0.5, -25, 0, self:GetTabContentHeight(left))
         end
-        if active.KillButton then
-            active.KillButton.Visible = true
-            self:PositionKillButton(active, split and "left" or nil)
+        if left.KillButton then
+            left.KillButton.Visible = true
+            self:PositionKillButton(left, split and "left" or nil)
         end
-        self:StyleTabEntry(active, true, false)
+        self:StyleTabEntry(left, true, false)
     end
 
     if split then
-        secondary.Container.Visible = true
-        secondary.Container.Position = UDim2.new(0.5, 7, 0, 141)
-        secondary.Container.Size = UDim2.new(0.5, -25, 0, self:GetTabContentHeight(secondary))
-        if secondary.KillButton then
-            secondary.KillButton.Visible = true
-            self:PositionKillButton(secondary, "right")
+        right.Container.Visible = true
+        right.Container.Position = UDim2.new(0.5, 7, 0, 141)
+        right.Container.Size = UDim2.new(0.5, -25, 0, self:GetTabContentHeight(right))
+        if right.KillButton then
+            right.KillButton.Visible = true
+            self:PositionKillButton(right, "right")
         end
-        self:StyleTabEntry(secondary, false, true)
+        self:StyleTabEntry(right, false, true)
     end
 
-    self.SectionHeader.Size = split and UDim2.new(0.5, -25, 0, 14) or UDim2.new(1, -36, 0, 14)
-    self.SectionHeader.Text = active and active.SectionTitle or ""
+    if split and pending and pending ~= left and pending ~= right then
+        self:StyleTabEntry(pending, false, false, true)
+    end
+
+    -- Leave room for the + button at the end of each fullscreen header.
+    self.SectionHeader.Size = split and UDim2.new(0.5, -51, 0, 14) or UDim2.new(1, -36, 0, 14)
+    self.SectionHeader.Text = left and left.SectionTitle or ""
     if self.SectionHeaderRight then
         self.SectionHeaderRight.Visible = split == true
-        self.SectionHeaderRight.Text = secondary and secondary.SectionTitle or ""
+        self.SectionHeaderRight.Size = UDim2.new(0.5, -51, 0, 14)
+        self.SectionHeaderRight.Text = right and right.SectionTitle or ""
     end
     if self.PaneDivider then
         self.PaneDivider.Visible = split == true
@@ -536,6 +647,8 @@ function ApexLibrary:ApplyTabLayouts()
             self.PaneDivider.Size = UDim2.new(0, 1, 0, math.max(0, (self.WindowHeight or 397) - 127))
         end
     end
+
+    self:UpdatePaneAddButtons()
 end
 
 function ApexLibrary:RefreshContentLayout()
@@ -614,6 +727,7 @@ function ApexLibrary:SetFullscreen(enabled)
     if enabled then
         self.SavedNormalPosition = self.MainFrame.Position
     end
+    self.PendingTabName = self.ActiveTabName
     self.IsFullscreen = enabled
     self:UpdateFullscreenGlyph()
 
@@ -899,6 +1013,42 @@ function ApexLibrary:BuildGUI()
     PaneDivider.Visible = false
     PaneDivider.Parent = MainFrame
 
+    -- Fullscreen pane assignment: click a tab in the bar, then press the +
+    -- button on the pane that should receive it.
+    local function CreatePaneAddButton(name, xScale, xOffset)
+        local button = Instance.new("TextButton")
+        button.Name = name
+        button.Size = UDim2.new(0, 20, 0, 20)
+        button.AnchorPoint = Vector2.new(1, 0)
+        button.Position = UDim2.new(xScale, xOffset, 0, 94)
+        button.BackgroundColor3 = Theme.Card
+        button.BorderSizePixel = 0
+        button.AutoButtonColor = false
+        button.Font = Enum.Font.RobotoMono
+        button.Text = "+"
+        button.TextColor3 = Theme.Muted
+        button.TextSize = FontSize(15)
+        button.Visible = false
+        button.Parent = MainFrame
+
+        local stroke = CreateStroke(button)
+        stroke.Color = Theme.Border
+        stroke.Thickness = 1
+
+        button.MouseEnter:Connect(function()
+            if button.Visible then
+                button.BackgroundColor3 = Theme.TabActive
+            end
+        end)
+        button.MouseLeave:Connect(function()
+            button.BackgroundColor3 = Theme.Card
+        end)
+        return button, stroke
+    end
+
+    local PaneAddLeft, PaneAddLeftStroke = CreatePaneAddButton("PaneAddLeft", 0.5, -7)
+    local PaneAddRight, PaneAddRightStroke = CreatePaneAddButton("PaneAddRight", 1, -18)
+
     -- Footer
     local FooterBar = Instance.new("Frame")
     FooterBar.Name = "FooterBar"
@@ -1019,10 +1169,24 @@ function ApexLibrary:BuildGUI()
     self.SectionHeader = SectionHeader
     self.SectionHeaderRight = SectionHeaderRight
     self.PaneDivider = PaneDivider
+    self.PaneAddLeft = PaneAddLeft
+    self.PaneAddLeftStroke = PaneAddLeftStroke
+    self.PaneAddRight = PaneAddRight
+    self.PaneAddRightStroke = PaneAddRightStroke
     self.TabCount = 0
     self.TabButtonsList = {}
     self.IsUIVisible = true
     self.IsAnimating = false
+
+    PaneAddLeft.Activated:Connect(function()
+        self:AssignTabToPane("left")
+    end)
+    PaneAddRight.Activated:Connect(function()
+        self:AssignTabToPane("right")
+    end)
+    self:RegisterAccentListener(function()
+        self:UpdatePaneAddButtons()
+    end)
 
     TabScrollLeft.Activated:Connect(function()
         self:ScrollTabs(-1)
@@ -1666,10 +1830,20 @@ function ApexLibrary:ActivateTab(entry, silent)
     end
 
     local previousName = self.ActiveTabName
-    if previousName and previousName ~= entry.Name then
-        self.SecondaryTabName = previousName
+    if self.IsFullscreen then
+        -- Programmatic selection assigns the left pane. If the tab was on the
+        -- right, the panes swap so both sides stay distinct.
+        if self:FindTabEntry(self.SecondaryTabName) == entry then
+            self.SecondaryTabName = previousName
+        end
+        self.ActiveTabName = entry.Name
+    else
+        if previousName and previousName ~= entry.Name then
+            self.SecondaryTabName = previousName
+        end
+        self.ActiveTabName = entry.Name
     end
-    self.ActiveTabName = entry.Name
+    self.PendingTabName = entry.Name
     self:ApplyTabLayouts()
     self:EnsureTabVisible(entry)
     self:CloseColorPopups()
@@ -1749,7 +1923,7 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
     end
 
     button.Activated:Connect(function()
-        parentLib:ActivateTab(entry)
+        parentLib:HandleTabClick(entry)
     end)
 
     -- The first tab is selected immediately. Keep the section header in sync
