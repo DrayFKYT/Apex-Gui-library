@@ -38,7 +38,7 @@ https://raw.githubusercontent.com/DrayFKYT/Apex-Gui-library/refs/heads/main/Apex
 
 ```lua
 local ApexLibrary = loadstring(game:HttpGet(
-    "https://raw.githubusercontent.com/DrayFKYT/Apex-Gui-library/refs/heads/main/ApexLibraryPlus.lua?v=14"
+    "https://raw.githubusercontent.com/DrayFKYT/Apex-Gui-library/refs/heads/main/ApexLibraryPlus.lua?v=15"
 ))()
 
 local Apex = ApexLibrary.new({
@@ -64,7 +64,7 @@ Only create one window per script. Re-running `ApexLibrary.new` destroys the pre
 
 ```lua
 local ApexLibrary = getgenv().ApexLibrary or loadstring(game:HttpGet(
-    "https://raw.githubusercontent.com/DrayFKYT/Apex-Gui-library/refs/heads/main/ApexLibraryPlus.lua?v=14"
+    "https://raw.githubusercontent.com/DrayFKYT/Apex-Gui-library/refs/heads/main/ApexLibraryPlus.lua?v=15"
 ))()
 ```
 
@@ -72,7 +72,7 @@ local ApexLibrary = getgenv().ApexLibrary or loadstring(game:HttpGet(
 
 ```lua
 local ApexLibrary = loadstring(game:HttpGet(
-    "https://raw.githubusercontent.com/DrayFKYT/Apex-Gui-library/refs/heads/main/ApexLibraryPlus.lua?v=14"
+    "https://raw.githubusercontent.com/DrayFKYT/Apex-Gui-library/refs/heads/main/ApexLibraryPlus.lua?v=15"
 ))()
 
 local Apex = ApexLibrary.new({
@@ -218,7 +218,7 @@ All examples use `Apex` as the object returned by `ApexLibrary.new(config)`.
 | `Apex:CreateTab(name, sectionTitle)` | Tab object | Creates a tab. `name` is the tab label; `sectionTitle` is the header shown above its content. |
 | `Apex:SelectTab(name, silent)` | `boolean` | Activates a tab by name. Returns `true` when found. `silent` is accepted for compatibility; the library does not play audio. |
 | `Apex:SetVisible(visible)` | `nil` | Animates the window closed or open. The close animation shrinks toward the mobile claw when one exists. |
-| `Apex:SetFullscreen(enabled)` | `nil` | Enters or leaves fullscreen. The window animates to a centered panel that occupies half the viewport width and 70% of its height, displays two tab panes side by side, clips content during the transition, and caps UI scale at 120%. In fullscreen, click a tab to arm it, then press the `+` button on the left or right pane to place it there. |
+| `Apex:SetFullscreen(enabled)` | `nil` | Enters or leaves fullscreen. The window animates to a centered panel that occupies half the viewport width and 70% of its height, displays two tab panes side by side, clips content during the transition, and caps UI scale at 120%. In fullscreen, click a tab to arm it, then press the `+` button that appears on the left or right pane to place it there. |
 | `Apex:GetAccentColor()` | `Color3` | Returns the current accent color. |
 | `Apex:SetAccentColor(color)` | `nil` | Updates every registered accent listener and saves the setting. |
 | `Apex:RegisterAccentListener(callback)` | `nil` | Calls `callback(color)` whenever the accent color changes. |
@@ -228,7 +228,7 @@ All examples use `Apex` as the object returned by `ApexLibrary.new(config)`.
 | `Apex:CloseColorPopups()` | `nil` | Closes every open color-picker popup. |
 | `Apex:Unload()` | `nil` | Runs unload callbacks, closes pickers, and destroys the window and mobile button. |
 | `Apex.Version` | `string` | `"APEX_SYS V3.7 PLUS"` |
-| `Apex.LayoutRevision` | `number` | Current layout revision. Revision 14 uses a 50% wide / 70% tall fullscreen panel with two tab panes and per-pane `+` placement. |
+| `Apex.LayoutRevision` | `number` | Current layout revision. Revision 15 uses a 50% wide / 70% tall fullscreen panel with two tab panes and pop-up `+` placement. |
 | `Apex.ConfigVersion` | `number` | Current profile schema version (`2`). |
 | `Apex.ProfileFileName` | `string` | Shared library profile file (`"ApexLibrary_Config.json"`). |
 | `Apex.Theme` | table | Shared terminal color palette. See [Theme](#theme). |
@@ -702,7 +702,7 @@ All library strokes are border-only, so button and input text stays clean instea
 - Audio feedback removed; the library does not use sound assets
 - Full SV square + hue slider + RGB color picker retained
 - Header fullscreen glyph: expands the window to a centered panel that occupies 50% of the usable screen width and 70% of its height, displays two tab panes side by side, grows the scrollable tabs, and caps text scaling at 120% so it stays readable without ballooning. The expand/collapse icon is drawn from corner brackets, and the transition tweens the window size, position, and UI scale while clipping the content.
-- In fullscreen, the active tab starts on the left and the previously viewed tab starts on the right. Click a tab in the bar to arm it, then press the `+` button on the left or right pane to place it. Assigning a tab that already occupies the other pane swaps the two sides.
+- In fullscreen, the active tab starts on the left and the previously viewed tab starts on the right. Click a tab in the bar to arm it; a `+` button pops up on both panes. Press the `+` on the side that should receive the tab. Assigning a tab that already occupies the other pane swaps the two sides, and either `+` closes the placement prompt.
 - Reopening the window keeps its last position instead of snapping to the center mid-animation
 - The mobile claw toggle renders above the fullscreen window so mobile players cannot get trapped behind it
 
@@ -718,6 +718,7 @@ Recent layout revisions:
 - Revision 12: the header gains a fullscreen glyph. Fullscreen becomes a centered panel covering 50% of the usable screen width and height, expands the scrolling tab content, and scales the UI only modestly (maximum 120%). The window size, position, and scale animate between layouts, and content is clipped during the transition. Closing and reopening keeps the window at its last position instead of snapping, and the mobile claw toggle stays above the window.
 - Revision 13: fullscreen is 50% wide and 70% tall, and shows two tab panes side by side. The active tab starts on the left and the previously viewed tab on the right. Wide fullscreen panels fit more tabs before the tab bar switches to scrolling.
 - Revision 14: fullscreen tab placement is explicit. Click a tab to arm it, then press the `+` button on the left or right pane to place it. Assigning a tab that already occupies the other pane swaps the two sides.
+- Revision 15: the fullscreen `+` buttons stay hidden until a tab is clicked, pop up on both panes, and disappear after a side is chosen.
 
 `APEX_SYS V3.6 PLUS` added `CreateButton`, `CreateSectionLabel`, `CreateListCard`, component handles, fixed color-picker initialization, popup management, unload callbacks, and keybind listening guards.
 

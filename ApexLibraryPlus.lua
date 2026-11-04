@@ -152,7 +152,8 @@ ApexLibrary.Version = "APEX_SYS V3.7 PLUS"
 -- 12: animated fullscreen glyph with layout-aware content resizing.
 -- 13: fullscreen is 50% wide and 70% tall, with two tab panes side by side.
 -- 14: fullscreen tabs are placed with a per-pane + button.
-ApexLibrary.LayoutRevision = 14
+-- 15: the + buttons appear only after a fullscreen tab is armed.
+ApexLibrary.LayoutRevision = 15
 local CONFIG_VERSION = 2
 ApexLibrary.ConfigVersion = CONFIG_VERSION
 ApexLibrary.ProfileFileName = ConfigFile
@@ -183,6 +184,7 @@ function ApexLibrary.new(config)
     self.SavedNormalPosition = nil
     self.SecondaryTabName = nil
     self.PendingTabName = nil
+    self.PanePlacementActive = false
     self.AccentUpdateCallbacks = {}
     self.ColorPopups = {}
     self.UnloadCallbacks = {}
@@ -481,9 +483,10 @@ function ApexLibrary:UpdatePaneAddButtons()
     end
 
     local split = self.IsFullscreen and #(self.TabButtonsList or {}) >= 2
-    self.PaneAddLeft.Visible = split
-    self.PaneAddRight.Visible = split
-    if not split then
+    local show = split and self.PanePlacementActive == true
+    self.PaneAddLeft.Visible = show
+    self.PaneAddRight.Visible = show
+    if not show then
         return
     end
 
@@ -515,32 +518,34 @@ function ApexLibrary:AssignTabToPane(side, tabName)
 
     local pending = self:FindTabEntry(tabName or self.PendingTabName or self.ActiveTabName)
     if not pending then
+        self.PanePlacementActive = false
+        self:ApplyTabLayouts()
         return
     end
 
     local left = self:FindTabEntry(self.ActiveTabName)
     local right = self:FindTabEntry(self.SecondaryTabName)
     if side == "left" then
-        if left == pending then
-            return
-        end
-        self.ActiveTabName = pending.Name
-        if right == pending then
-            self.SecondaryTabName = left and left.Name or nil
-        end
-    else
-        if right == pending then
-            return
-        end
-        if left == pending then
-            if not right then
-                return
+        if left ~= pending then
+            self.ActiveTabName = pending.Name
+            if right == pending then
+                self.SecondaryTabName = left and left.Name or nil
             end
-            self.ActiveTabName = right.Name
         end
-        self.SecondaryTabName = pending.Name
+    elseif right ~= pending then
+        if left == pending then
+            if right then
+                self.ActiveTabName = right.Name
+            end
+        end
+        if left ~= pending or right then
+            self.SecondaryTabName = pending.Name
+        end
     end
 
+    -- Pressing either + closes the placement prompt, even when the tab is
+    -- already in that pane.
+    self.PanePlacementActive = false
     self.PendingTabName = pending.Name
     self:ApplyTabLayouts()
     self:CloseColorPopups()
@@ -555,6 +560,7 @@ function ApexLibrary:HandleTabClick(entry)
 
     if self.IsFullscreen and #(self.TabButtonsList or {}) >= 2 then
         self.PendingTabName = entry.Name
+        self.PanePlacementActive = true
         self:ApplyTabLayouts()
         self:EnsureTabVisible(entry)
         self:CloseColorPopups()
@@ -728,6 +734,7 @@ function ApexLibrary:SetFullscreen(enabled)
         self.SavedNormalPosition = self.MainFrame.Position
     end
     self.PendingTabName = self.ActiveTabName
+    self.PanePlacementActive = false
     self.IsFullscreen = enabled
     self:UpdateFullscreenGlyph()
 
@@ -1844,6 +1851,7 @@ function ApexLibrary:ActivateTab(entry, silent)
         self.ActiveTabName = entry.Name
     end
     self.PendingTabName = entry.Name
+    self.PanePlacementActive = false
     self:ApplyTabLayouts()
     self:EnsureTabVisible(entry)
     self:CloseColorPopups()
