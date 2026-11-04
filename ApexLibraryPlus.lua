@@ -150,7 +150,8 @@ ApexLibrary.Version = "APEX_SYS V3.7 PLUS"
 -- 10: keybind action rows with optional or mandatory key bindings.
 -- 11: keybind rows can omit the right-side action button (`ShowAction = false`).
 -- 12: animated fullscreen glyph with layout-aware content resizing.
-ApexLibrary.LayoutRevision = 12
+-- 13: fullscreen is 50% wide and 70% tall, with two tab panes side by side.
+ApexLibrary.LayoutRevision = 13
 local CONFIG_VERSION = 2
 ApexLibrary.ConfigVersion = CONFIG_VERSION
 ApexLibrary.ProfileFileName = ConfigFile
@@ -179,6 +180,7 @@ function ApexLibrary.new(config)
     self.MobileButtonRef = nil
     self.IsFullscreen = false
     self.SavedNormalPosition = nil
+    self.SecondaryTabName = nil
     self.AccentUpdateCallbacks = {}
     self.ColorPopups = {}
     self.UnloadCallbacks = {}
@@ -394,15 +396,155 @@ function ApexLibrary:GetTabContentHeight(entry)
     return self.ContentFullHeight
 end
 
+function ApexLibrary:FindTabEntry(name)
+    if not name then
+        return nil
+    end
+    for _, entry in ipairs(self.TabButtonsList or {}) do
+        if entry.Name == name then
+            return entry
+        end
+    end
+    return nil
+end
+
+function ApexLibrary:GetNextTabEntry(entry)
+    local list = self.TabButtonsList or {}
+    if #list < 2 then
+        return nil
+    end
+    if not entry then
+        return list[1]
+    end
+    for index, candidate in ipairs(list) do
+        if candidate == entry then
+            return list[(index % #list) + 1]
+        end
+    end
+    return list[1]
+end
+
+function ApexLibrary:StyleTabEntry(entry, active, secondary)
+    if not entry then
+        return
+    end
+    if active then
+        entry.Button.BackgroundColor3 = Theme.TabActive
+        entry.Button.TextColor3 = Theme.Text
+        entry.Line.BackgroundColor3 = self.AccentColor
+        entry.Line.BackgroundTransparency = 0
+        entry.Line.Visible = true
+    elseif secondary then
+        entry.Button.BackgroundColor3 = Theme.TabActive
+        entry.Button.TextColor3 = Theme.Text
+        entry.Line.BackgroundColor3 = self.AccentColor
+        entry.Line.BackgroundTransparency = 0.45
+        entry.Line.Visible = true
+    else
+        entry.Button.BackgroundColor3 = Theme.TabBar
+        entry.Button.TextColor3 = Theme.Muted
+        entry.Line.BackgroundTransparency = 0
+        entry.Line.Visible = false
+    end
+end
+
+function ApexLibrary:PositionKillButton(entry, splitSide)
+    local button = entry and entry.KillButton
+    if not button then
+        return
+    end
+    if splitSide == "left" then
+        button.Position = UDim2.new(0, 18, 1, -86)
+        button.Size = UDim2.new(0.5, -25, 0, 36)
+    elseif splitSide == "right" then
+        button.Position = UDim2.new(0.5, 7, 1, -86)
+        button.Size = UDim2.new(0.5, -25, 0, 36)
+    else
+        button.Position = UDim2.new(0, 18, 1, -86)
+        button.Size = UDim2.new(1, -36, 0, 36)
+    end
+end
+
+-- Fullscreen shows the selected tab on the left and the previously viewed tab
+-- on the right, so two panels are usable at once. Normal mode keeps one tab.
+function ApexLibrary:ApplyTabLayouts()
+    if not self.MainFrame or not self.MainFrame.Parent or not self.SectionHeader then
+        return
+    end
+
+    local list = self.TabButtonsList or {}
+    local active = self:FindTabEntry(self.ActiveTabName)
+    if not active and #list > 0 then
+        active = list[1]
+        self.ActiveTabName = active.Name
+    end
+
+    local secondary = nil
+    if self.IsFullscreen and #list >= 2 and active then
+        secondary = self:FindTabEntry(self.SecondaryTabName)
+        if not secondary or secondary == active then
+            secondary = self:GetNextTabEntry(active)
+        end
+        self.SecondaryTabName = secondary and secondary.Name or nil
+    end
+
+    local split = self.IsFullscreen and active ~= nil and secondary ~= nil
+    for _, tab in ipairs(list) do
+        tab.Container.Visible = false
+        tab.Container.Position = UDim2.new(0, 18, 0, 141)
+        tab.Container.Size = UDim2.new(1, -36, 0, self:GetTabContentHeight(tab))
+        if tab.KillButton then
+            tab.KillButton.Visible = false
+            self:PositionKillButton(tab, nil)
+        end
+        self:StyleTabEntry(tab, false, false)
+    end
+
+    if active then
+        active.Container.Visible = true
+        if split then
+            active.Container.Size = UDim2.new(0.5, -25, 0, self:GetTabContentHeight(active))
+        end
+        if active.KillButton then
+            active.KillButton.Visible = true
+            self:PositionKillButton(active, split and "left" or nil)
+        end
+        self:StyleTabEntry(active, true, false)
+    end
+
+    if split then
+        secondary.Container.Visible = true
+        secondary.Container.Position = UDim2.new(0.5, 7, 0, 141)
+        secondary.Container.Size = UDim2.new(0.5, -25, 0, self:GetTabContentHeight(secondary))
+        if secondary.KillButton then
+            secondary.KillButton.Visible = true
+            self:PositionKillButton(secondary, "right")
+        end
+        self:StyleTabEntry(secondary, false, true)
+    end
+
+    self.SectionHeader.Size = split and UDim2.new(0.5, -25, 0, 14) or UDim2.new(1, -36, 0, 14)
+    self.SectionHeader.Text = active and active.SectionTitle or ""
+    if self.SectionHeaderRight then
+        self.SectionHeaderRight.Visible = split == true
+        self.SectionHeaderRight.Text = secondary and secondary.SectionTitle or ""
+    end
+    if self.PaneDivider then
+        self.PaneDivider.Visible = split == true
+        if split then
+            self.PaneDivider.Position = UDim2.new(0.5, 0, 0, 97)
+            self.PaneDivider.Size = UDim2.new(0, 1, 0, math.max(0, (self.WindowHeight or 397) - 127))
+        end
+    end
+end
+
 function ApexLibrary:RefreshContentLayout()
     if not self.MainFrame or not self.MainFrame.Parent or not self.TabBar then
         return
     end
     self.ContentFullHeight = self:GetAvailableContentHeight()
     self.ContentKillHeight = math.max(100, (self.WindowHeight or 397) - 237)
-    for _, tab in ipairs(self.TabButtonsList or {}) do
-        tab.Container.Size = UDim2.new(1, -36, 0, self:GetTabContentHeight(tab))
-    end
+    self:ApplyTabLayouts()
     self:UpdateTabSizes()
 end
 
@@ -410,11 +552,11 @@ function ApexLibrary:GetWindowLayout()
     local area = self:GetScreenArea()
     if self.IsFullscreen then
         local scale = self:GetFullscreenScale()
-        -- Fullscreen is a centered 50% panel, not an edge-to-edge window.
-        -- Divide by the UI scale so the on-screen size stays exactly half the
-        -- screen on every viewport.
+        -- Fullscreen is a centered panel covering 50% of the usable width and
+        -- 70% of the usable height. Divide by the UI scale so the on-screen
+        -- size stays exact on every viewport.
         local width = math.max(320, math.floor((area.X * 0.5) / scale))
-        local height = math.max(320, math.floor((area.Y * 0.5) / scale))
+        local height = math.max(320, math.floor((area.Y * 0.7) / scale))
         return scale, width, height, UDim2.new(0, width, 0, height), UDim2.new(0.5, 0, 0.5, 0)
     end
 
@@ -734,6 +876,29 @@ function ApexLibrary:BuildGUI()
     SectionHeader.TextXAlignment = Enum.TextXAlignment.Left
     SectionHeader.Parent = MainFrame
 
+    -- Fullscreen split view labels each tab pane with its own section title.
+    local SectionHeaderRight = Instance.new("TextLabel")
+    SectionHeaderRight.Name = "SectionHeaderRight"
+    SectionHeaderRight.Size = UDim2.new(0.5, -25, 0, 14)
+    SectionHeaderRight.Position = UDim2.new(0.5, 7, 0, 97)
+    SectionHeaderRight.BackgroundTransparency = 1
+    SectionHeaderRight.Font = Enum.Font.RobotoMono
+    SectionHeaderRight.Text = ""
+    SectionHeaderRight.TextColor3 = Theme.Section
+    SectionHeaderRight.TextSize = FontSize(10)
+    SectionHeaderRight.TextXAlignment = Enum.TextXAlignment.Left
+    SectionHeaderRight.Visible = false
+    SectionHeaderRight.Parent = MainFrame
+
+    local PaneDivider = Instance.new("Frame")
+    PaneDivider.Name = "PaneDivider"
+    PaneDivider.Size = UDim2.new(0, 1, 0, 270)
+    PaneDivider.Position = UDim2.new(0.5, 0, 0, 97)
+    PaneDivider.BackgroundColor3 = Theme.Divider
+    PaneDivider.BorderSizePixel = 0
+    PaneDivider.Visible = false
+    PaneDivider.Parent = MainFrame
+
     -- Footer
     local FooterBar = Instance.new("Frame")
     FooterBar.Name = "FooterBar"
@@ -852,6 +1017,8 @@ function ApexLibrary:BuildGUI()
     self.TabScrollRight = TabScrollRight
     self.TabScrollWidth = 87
     self.SectionHeader = SectionHeader
+    self.SectionHeaderRight = SectionHeaderRight
+    self.PaneDivider = PaneDivider
     self.TabCount = 0
     self.TabButtonsList = {}
     self.IsUIVisible = true
@@ -1457,13 +1624,11 @@ function ApexLibrary:UpdateTabSizes()
         return
     end
     local count = math.max(#self.TabButtonsList, 1)
-    -- Four full tabs fit at the native 392px width. Once a script adds a
-    -- fifth, keep each tab readable and let the bar scroll horizontally
-    -- instead of squeezing every label into an unusable width.
-    local useScroll = count > 4
     local scrollTabWidth = 87
     local scrollArrowWidth = 22
-
+    -- Keep tabs at a readable minimum width. Wide fullscreen panels can fit
+    -- more than four tabs before the bar needs to scroll.
+    local useScroll = count * scrollTabWidth > (self.WindowWidth or 392) + 0.5
     self.TabScrollWidth = scrollTabWidth
 
     if self.TabBar then
@@ -1500,28 +1665,12 @@ function ApexLibrary:ActivateTab(entry, silent)
         return
     end
 
-    for _, tab in ipairs(self.TabButtonsList) do
-        tab.Button.BackgroundColor3 = Theme.TabBar
-        tab.Button.TextColor3 = Theme.Muted
-        tab.Line.Visible = false
-        tab.Container.Visible = false
-        tab.Container.Size = UDim2.new(1, -36, 0, self:GetTabContentHeight(tab))
-        if tab.KillButton then
-            tab.KillButton.Visible = false
-        end
+    local previousName = self.ActiveTabName
+    if previousName and previousName ~= entry.Name then
+        self.SecondaryTabName = previousName
     end
-
-    entry.Button.BackgroundColor3 = Theme.TabActive
-    entry.Button.TextColor3 = Theme.Text
-    entry.Line.BackgroundColor3 = self.AccentColor
-    entry.Line.Visible = true
-    entry.Container.Visible = true
-    if entry.KillButton then
-        entry.KillButton.Visible = true
-        entry.Container.Size = UDim2.new(1, -36, 0, self:GetTabContentHeight(entry))
-    end
-    self.SectionHeader.Text = entry.SectionTitle
     self.ActiveTabName = entry.Name
+    self:ApplyTabLayouts()
     self:EnsureTabVisible(entry)
     self:CloseColorPopups()
 end
@@ -1595,6 +1744,9 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
     table.insert(self.TabButtonsList, entry)
     self.TabCount = self.TabCount + 1
     self:UpdateTabSizes()
+    if self.IsFullscreen then
+        self:ApplyTabLayouts()
+    end
 
     button.Activated:Connect(function()
         parentLib:ActivateTab(entry)
