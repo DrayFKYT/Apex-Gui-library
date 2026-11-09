@@ -1,5 +1,5 @@
 --[================================================================[
-    PROJECT: APEX_SYS // STANDALONE GUI LIBRARY ENGINE (V3.7 PLUS)
+    PROJECT: APEX_SYS // STANDALONE GUI LIBRARY ENGINE (V3.8 PLUS)
     DESIGN: Precision Terminal HUD & Advanced Modular Framework
     BASE:   APEX_SYS V3.5 (core visual style preserved)
     EXTENSIONS:
@@ -12,6 +12,9 @@
         - Color popup manager (closes on tab switch / hide)
         - Unload callbacks for user scripts
         - Keybind listening guard
+        - Library-owned pinned CONFIG tab with mandatory shared settings
+        - Shared anti-AFK guard (always present, always persisted)
+        - Numeric input Min/Max clamping (auto-corrects over-limit values)
     NOTE: This is a separate library file. The original V3.5 file is not modified.
 ]================================================================]--
 
@@ -28,6 +31,9 @@ local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 -- One library-wide profile shared by every script that uses APEX. Script
 -- feature settings belong in that script's own config file instead.
 local ConfigFile = "ApexLibrary_Config.json"
+-- The library owns this tab. Scripts may create tabs before it but never after
+-- it, and the name is reserved so a script cannot impersonate or edit it.
+local CONFIG_TAB_NAME = "CONFIG"
 
 -- Desktop gets larger native font sizes instead of fractional UI scaling.
 -- Keeping whole pixel sizes renders text sharply; touch layout is unchanged.
@@ -132,13 +138,69 @@ local function applySideToggleVisual(thumb, stroke, enabled, accent)
     }):Play()
 end
 
+-- // Numeric input helpers
+-- Scripts can pass an optional options table as the final argument to numeric
+-- components: { Min = 0, Max = 200, Integer = true }. Values over Max snap
+-- back to Max instead of being silently accepted by the server.
+local function NormalizeNumberOptions(options)
+    if type(options) ~= "table" then
+        return nil
+    end
+    local min = tonumber(options.Min)
+    local max = tonumber(options.Max)
+    if min and max and min > max then
+        min, max = max, min
+    end
+    return {
+        Min = min,
+        Max = max,
+        Integer = options.Integer == true,
+    }
+end
+
+local function ClampNumber(value, options, fallback)
+    local number = tonumber(value)
+    if not number then
+        number = tonumber(fallback)
+    end
+    if not number then
+        return nil
+    end
+    if options then
+        if options.Integer then
+            number = math.floor(number + 0.5)
+        end
+        if options.Min and number < options.Min then
+            number = options.Min
+        end
+        if options.Max and number > options.Max then
+            number = options.Max
+        end
+    end
+    return number
+end
+
+local function FormatNumber(value)
+    local number = tonumber(value)
+    if not number then
+        return tostring(value or 0)
+    end
+    if math.abs(number - math.floor(number + 0.5)) < 1e-9 then
+        return tostring(math.floor(number + 0.5))
+    end
+    local text = string.format("%.4f", number)
+    text = text:gsub("0+$", "")
+    text = text:gsub("%.$", "")
+    return text
+end
+
 -- =================================================================
 -- APEX GUI LIBRARY ENGINE IMPLEMENTATION
 -- =================================================================
 
 local ApexLibrary = {}
 ApexLibrary.__index = ApexLibrary
-ApexLibrary.Version = "APEX_SYS V3.7 PLUS"
+ApexLibrary.Version = "APEX_SYS V3.8 PLUS"
 -- Bump this when a script depends on a layout fix that older copies lack.
 -- 3: overflow tab bar gains left/right navigation arrows.
 -- 4: desktop 120% whole-UI scaling (reverted in 5).
@@ -153,8 +215,12 @@ ApexLibrary.Version = "APEX_SYS V3.7 PLUS"
 -- 13: fullscreen is 50% wide and 70% tall, with two tab panes side by side.
 -- 14: fullscreen tabs are placed with a per-pane + button.
 -- 15: the + buttons appear only after a fullscreen tab is armed.
-ApexLibrary.LayoutRevision = 15
-local CONFIG_VERSION = 2
+-- 16: library-owned CONFIG tab is pinned last, opens on every menu open, and
+--     carries mandatory shared settings (anti-AFK, accent, menu key, lock).
+--     The shared profile merges settings instead of overwriting them, and
+--     numeric inputs support Min/Max/Integer clamping with auto-correction.
+ApexLibrary.LayoutRevision = 16
+local CONFIG_VERSION = 3
 ApexLibrary.ConfigVersion = CONFIG_VERSION
 ApexLibrary.ProfileFileName = ConfigFile
 
@@ -192,17 +258,25 @@ function ApexLibrary.new(config)
     self.ActiveKeybindCancel = nil
     self.IsUnloaded = false
     self.ConfigVersion = CONFIG_VERSION
+    -- Shared profile settings. This table survives every script that uses the
+    -- library and holds the mandatory CONFIG tab values.
+    self.Settings = {}
+    self.AntiAFKEnabled = true
+    self.AntiAFKConnection = nil
+    self.ConfigTabEntry = nil
+    self.ConfigTabObject = nil
 
     -- Read the profile on every instance so a setting changed by an earlier
     -- script or window in this executor session is picked up immediately.
     local savedProfile = LoadConfig()
     local savedConfigVersion = 0
+    local hadAntiAFKSetting = false
     if type(savedProfile) == "table" then
         savedConfigVersion = tonumber(savedProfile.ConfigVersion) or 0
         -- Version 1 and older used the blue APEX theme and the P hide key.
         -- Migrate those configs to the terminal theme instead of carrying the
         -- old look forward. Mobile-button settings are safe to keep.
-        if savedConfigVersion >= CONFIG_VERSION then
+        if savedConfigVersion >= 2 then
             if type(savedProfile.AccentColor) == "table" then
                 local color = savedProfile.AccentColor
                 self.AccentColor = Color3.fromRGB(
@@ -236,6 +310,17 @@ function ApexLibrary.new(config)
                 )
             end)
         end
+        if type(savedProfile.Settings) == "table" then
+            for key, value in pairs(savedProfile.Settings) do
+                if type(key) == "string" then
+                    self.Settings[key] = value
+                end
+            end
+        end
+    end
+    hadAntiAFKSetting = self.Settings.AntiAFK ~= nil
+    if hadAntiAFKSetting then
+        self.AntiAFKEnabled = self.Settings.AntiAFK == true
     end
 
     self.SavedButtonPosition = {
@@ -250,7 +335,15 @@ function ApexLibrary.new(config)
     }
 
     self:BuildGUI()
-    if savedConfigVersion < CONFIG_VERSION then
+    -- The CONFIG tab is created by the library itself, after the base GUI so it
+    -- can rely on TabBar/MainFrame being available. Script tabs are inserted
+    -- before it in CreateTab, which keeps CONFIG pinned as the final tab.
+    self:BuildConfigTab()
+    self:ApplyAntiAFK(self.AntiAFKEnabled, false)
+    -- Anti-AFK is mandatory for every script, so its value is always written
+    -- to the shared profile even when this is a brand-new config file.
+    self.Settings.AntiAFK = self.AntiAFKEnabled
+    if savedConfigVersion < CONFIG_VERSION or not hadAntiAFKSetting then
         self:SaveSettings()
     end
     return self
@@ -307,6 +400,10 @@ function ApexLibrary:Unload()
         return
     end
     self.IsUnloaded = true
+    if self.AntiAFKConnection then
+        self.AntiAFKConnection:Disconnect()
+        self.AntiAFKConnection = nil
+    end
     for _, callback in ipairs(self.UnloadCallbacks) do
         pcall(callback)
     end
@@ -348,17 +445,150 @@ function ApexLibrary:SaveSettings()
         )
     end
 
-    SaveConfig({
-        ConfigVersion = CONFIG_VERSION,
-        AccentColor = {
-            R = math.floor(self.AccentColor.R * 255 + 0.5),
-            G = math.floor(self.AccentColor.G * 255 + 0.5),
-            B = math.floor(self.AccentColor.B * 255 + 0.5)
-        },
-        HideKey = self.CurrentHideKey.Name,
-        IsButtonLocked = self.IsButtonLocked,
-        ButtonPosition = buttonPosition
-    })
+    -- Merge into the on-disk profile. A second APEX window (another script or
+    -- another executor tab) may have written shared settings since this window
+    -- loaded; overwriting the whole file would erase its values.
+    local existing = LoadConfig()
+    local profile = type(existing) == "table" and existing or {}
+    profile.ConfigVersion = CONFIG_VERSION
+    profile.AccentColor = {
+        R = math.floor(self.AccentColor.R * 255 + 0.5),
+        G = math.floor(self.AccentColor.G * 255 + 0.5),
+        B = math.floor(self.AccentColor.B * 255 + 0.5)
+    }
+    profile.HideKey = self.CurrentHideKey.Name
+    profile.IsButtonLocked = self.IsButtonLocked
+    profile.ButtonPosition = buttonPosition
+    -- Merge settings both ways: keep keys written by another APEX window and
+    -- publish this window's keys so every script sees the same shared table.
+    local mergedSettings = {}
+    if type(profile.Settings) == "table" then
+        for key, value in pairs(profile.Settings) do
+            if type(key) == "string" then
+                mergedSettings[key] = value
+            end
+        end
+    end
+    for key, value in pairs(self.Settings or {}) do
+        if type(key) == "string" then
+            mergedSettings[key] = value
+        end
+    end
+    self.Settings = mergedSettings
+    profile.Settings = mergedSettings
+    SaveConfig(profile)
+end
+
+-- // Shared, persisted settings API
+-- Scripts may store their own shared values here, but the CONFIG tab itself is
+-- library-owned. Keys are strings and values must be JSON-safe.
+function ApexLibrary:GetSetting(key, defaultValue)
+    local value = self.Settings and self.Settings[key]
+    if value == nil then
+        return defaultValue
+    end
+    return value
+end
+
+function ApexLibrary:SetSetting(key, value)
+    if type(key) ~= "string" then
+        return
+    end
+    self.Settings = self.Settings or {}
+    self.Settings[key] = value
+    self:SaveSettings()
+end
+
+-- // Mandatory anti-AFK guard
+-- The library owns this so every script gets it without opting in. The Idled
+-- event fires just before Roblox would kick an idle client; capturing the
+-- controller and clicking resets the idle timer.
+function ApexLibrary:ApplyAntiAFK(state, persist)
+    self.AntiAFKEnabled = state == true
+    if persist ~= false then
+        self.Settings = self.Settings or {}
+        self.Settings.AntiAFK = self.AntiAFKEnabled
+        self:SaveSettings()
+    end
+
+    if self.AntiAFKEnabled then
+        if not self.AntiAFKConnection then
+            local player = Players.LocalPlayer
+            self.AntiAFKConnection = player.Idled:Connect(function()
+                if not self.AntiAFKEnabled or self.IsUnloaded then
+                    return
+                end
+                pcall(function()
+                    local virtualUser = game:GetService("VirtualUser")
+                    virtualUser:CaptureController()
+                    local camera = workspace.CurrentCamera
+                    virtualUser:Button2Down(Vector2.new(0, 0), camera.CFrame)
+                    task.wait(0.5)
+                    virtualUser:Button2Up(Vector2.new(0, 0), camera.CFrame)
+                end)
+            end)
+        end
+    elseif self.AntiAFKConnection then
+        self.AntiAFKConnection:Disconnect()
+        self.AntiAFKConnection = nil
+    end
+end
+
+-- // Library-owned CONFIG tab
+-- This tab is always created, always last, and always opens when the menu is
+-- shown. Its contents are not exposed as a script tab, and the name is
+-- reserved in CreateTab.
+function ApexLibrary:BuildConfigTab()
+    if self.ConfigTabObject then
+        return self.ConfigTabObject
+    end
+
+    local tab = self:CreateTab(CONFIG_TAB_NAME, "MANDATORY // SHARED PROFILE", true)
+    local entry = self:FindTabEntry(CONFIG_TAB_NAME)
+    self.ConfigTabEntry = entry
+    self.ConfigTabObject = tab
+    if entry then
+        entry.Pinned = true
+        entry.IsConfig = true
+    end
+
+    tab:CreateSectionLabel("ALWAYS-ON PROTECTION")
+    tab:CreateToggle(
+        "ANTI-AFK",
+        "Mandatory shared guard. Prevents the Roblox idle kick and is saved for every APEX script.",
+        self.AntiAFKEnabled,
+        function(state)
+            self:ApplyAntiAFK(state, true)
+        end
+    )
+
+    tab:CreateSectionLabel("INTERFACE PROFILE")
+    tab:CreateKeybindCard()
+    tab:CreateColorPicker(
+        "ACCENT COLOR",
+        "Shared by every APEX window and script. Applies immediately and saves.",
+        self.AccentColor,
+        function(color)
+            self:SetAccentColor(color)
+        end
+    )
+    tab:CreateToggle(
+        "LOCK MOBILE BUTTON",
+        "Stops the floating claw button from being dragged. The position is still saved.",
+        self.IsButtonLocked,
+        function(state)
+            self.IsButtonLocked = state == true
+            self:SaveSettings()
+        end
+    )
+    tab:CreateInfoCard("PROFILE_FILE", ConfigFile)
+    tab:CreateReadMeCard(
+        "LIBRARY-OWNED CONFIG",
+        "This tab is pinned by ApexLibraryPlus and always opens when the menu is shown. Script makers cannot create, rename, or remove it. Script-specific feature toggles live in that script's own config file.",
+        92
+    )
+
+    return tab
 end
 
 function ApexLibrary:GetWindowSize()
@@ -1224,6 +1454,11 @@ function ApexLibrary:BuildGUI()
         self.IsAnimating = true
 
         if visible then
+            -- The CONFIG tab is the mandatory landing page. Select it every
+            -- time the menu opens, even if the user was on another tab before.
+            if self.ConfigTabEntry then
+                self:SelectTab(CONFIG_TAB_NAME, true)
+            end
             MainFrame.Visible = true
             -- Resolve the target layout before animating so the window does
             -- not finish the tween and then snap to a different position.
@@ -1790,10 +2025,28 @@ function ApexLibrary:EnsureTabVisible(entry)
     self:UpdateTabScrollButtons()
 end
 
+function ApexLibrary:EnsureConfigTabLast()
+    local list = self.TabButtonsList
+    local configEntry = self.ConfigTabEntry
+    if not list or #list < 2 or not configEntry then
+        return
+    end
+    for index, entry in ipairs(list) do
+        if entry == configEntry then
+            if index ~= #list then
+                table.remove(list, index)
+                list[#list + 1] = configEntry
+            end
+            return
+        end
+    end
+end
+
 function ApexLibrary:UpdateTabSizes()
     if not self.TabBar then
         return
     end
+    self:EnsureConfigTabLast()
     local count = math.max(#self.TabButtonsList, 1)
     local scrollTabWidth = 87
     local scrollArrowWidth = 22
@@ -1867,7 +2120,13 @@ function ApexLibrary:SelectTab(tabName, silent)
     return false
 end
 
-function ApexLibrary:CreateTab(tabName, sectionTitle)
+function ApexLibrary:CreateTab(tabName, sectionTitle, isInternal)
+    local internal = isInternal == true
+    -- CONFIG is owned by the library. Reject impersonation so a script cannot
+    -- replace, rename, or edit the mandatory shared settings tab.
+    if not internal and type(tabName) == "string" and string.upper(tabName) == CONFIG_TAB_NAME then
+        error("[APEX] The CONFIG tab is library-owned and cannot be created or modified by scripts.", 0)
+    end
     local parentLib = self
 
     local container = Instance.new("ScrollingFrame")
@@ -1923,7 +2182,13 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         KillButton = nil,
     }
 
-    table.insert(self.TabButtonsList, entry)
+    -- Insert before the pinned CONFIG tab so the library tab always stays at
+    -- the far right, even when scripts create tabs after the window is built.
+    if self.ConfigTabEntry and self.ConfigTabEntry ~= entry then
+        table.insert(self.TabButtonsList, math.max(1, #self.TabButtonsList), entry)
+    else
+        table.insert(self.TabButtonsList, entry)
+    end
     self.TabCount = self.TabCount + 1
     self:UpdateTabSizes()
     if self.IsFullscreen then
@@ -2484,7 +2749,14 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
     end
 
     -- Standalone Number Input Component (Without a toggle switch)
-    function TabObj:CreateInputCard(name, description, defaultValue, callback)
+    function TabObj:CreateInputCard(name, description, defaultValue, callback, options)
+        local numberOptions = NormalizeNumberOptions(options)
+        if numberOptions then
+            local clamped = ClampNumber(defaultValue, numberOptions, defaultValue)
+            if clamped ~= nil then
+                defaultValue = clamped
+            end
+        end
         local Card = Instance.new("Frame")
         Card.Size = UDim2.new(1, 0, 0, 64)
         Card.BackgroundColor3 = Theme.Card
@@ -2519,7 +2791,7 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         inputBox.BackgroundColor3 = Theme.Input
         inputBox.BorderSizePixel = 0
         inputBox.Font = Enum.Font.RobotoMono
-        inputBox.Text = tostring(defaultValue or 16)
+        inputBox.Text = FormatNumber(defaultValue or 16)
         inputBox.TextColor3 = Theme.Text
         inputBox.TextSize = FontSize(12)
         inputBox.ClearTextOnFocus = false
@@ -2533,24 +2805,32 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
 
         inputBox.FocusLost:Connect(function()
             inputStroke.Color = Theme.Border
-            local number = tonumber(inputBox.Text)
-            if number then
-                defaultValue = number
-                if callback then
-                    pcall(callback, number)
+            local raw = tonumber(inputBox.Text)
+            if raw then
+                local number = ClampNumber(raw, numberOptions, defaultValue)
+                if number ~= nil then
+                    defaultValue = number
+                    inputBox.Text = FormatNumber(number)
+                    if callback then
+                        pcall(callback, number)
+                    end
                 end
             else
-                inputBox.Text = tostring(defaultValue or 16)
+                inputBox.Text = FormatNumber(defaultValue or 16)
             end
         end)
 
         local API = {}
         function API:GetValue()
-            return tonumber(inputBox.Text) or defaultValue or 0
+            return ClampNumber(inputBox.Text, numberOptions, defaultValue) or 0
         end
         function API:SetValue(value)
-            defaultValue = value
-            inputBox.Text = tostring(value)
+            local number = ClampNumber(value, numberOptions, defaultValue)
+            if number == nil then
+                return
+            end
+            defaultValue = number
+            inputBox.Text = FormatNumber(number)
         end
         return API
     end
@@ -2763,7 +3043,14 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
     end
 
     -- 2. Toggle with Number Input Component
-    function TabObj:CreateToggleWithInput(name, description, initialState, defaultValue, toggleCallback, inputCallback)
+    function TabObj:CreateToggleWithInput(name, description, initialState, defaultValue, toggleCallback, inputCallback, options)
+        local numberOptions = NormalizeNumberOptions(options)
+        if numberOptions then
+            local clamped = ClampNumber(defaultValue, numberOptions, defaultValue)
+            if clamped ~= nil then
+                defaultValue = clamped
+            end
+        end
         local Card = Instance.new("Frame")
         Card.Size = UDim2.new(1, 0, 0, 64)
         Card.BackgroundColor3 = Theme.Card
@@ -2798,7 +3085,7 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
         inputBox.BackgroundColor3 = Theme.Input
         inputBox.BorderSizePixel = 0
         inputBox.Font = Enum.Font.RobotoMono
-        inputBox.Text = tostring(defaultValue or 24)
+        inputBox.Text = FormatNumber(defaultValue or 24)
         inputBox.TextColor3 = Theme.Text
         inputBox.TextSize = FontSize(12)
         inputBox.ClearTextOnFocus = false
@@ -2812,14 +3099,18 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
 
         inputBox.FocusLost:Connect(function()
             inputStroke.Color = Theme.Border
-            local number = tonumber(inputBox.Text)
-            if number then
-                defaultValue = number
-                if inputCallback then
-                    pcall(inputCallback, number)
+            local raw = tonumber(inputBox.Text)
+            if raw then
+                local number = ClampNumber(raw, numberOptions, defaultValue)
+                if number ~= nil then
+                    defaultValue = number
+                    inputBox.Text = FormatNumber(number)
+                    if inputCallback then
+                        pcall(inputCallback, number)
+                    end
                 end
             else
-                inputBox.Text = tostring(defaultValue or 24)
+                inputBox.Text = FormatNumber(defaultValue or 24)
             end
         end)
 
@@ -2873,11 +3164,15 @@ function ApexLibrary:CreateTab(tabName, sectionTitle)
             setState(state, false)
         end
         function API:GetValue()
-            return tonumber(inputBox.Text) or defaultValue or 0
+            return ClampNumber(inputBox.Text, numberOptions, defaultValue) or 0
         end
         function API:SetValue(value)
-            defaultValue = value
-            inputBox.Text = tostring(value)
+            local number = ClampNumber(value, numberOptions, defaultValue)
+            if number == nil then
+                return
+            end
+            defaultValue = number
+            inputBox.Text = FormatNumber(number)
         end
         return API
     end
