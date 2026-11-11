@@ -58,6 +58,27 @@ local function CreateStroke(parent)
     return stroke
 end
 
+-- Some games skin every ScreenGui parented under PlayerGui (Bug Evolution
+-- rewrites dark backgrounds, strokes, gradients and scrollbars). Mark the
+-- whole Apex tree NoSkin before it is parented and keep marking anything
+-- created later. DescendantAdded fires synchronously, while the game skinner
+-- defers its SkinOne call, so the attribute always wins the race.
+local function ProtectFromGameSkinning(root)
+    local function mark(instance)
+        if instance:GetAttribute("NoSkin") then
+            return
+        end
+        pcall(function()
+            instance:SetAttribute("NoSkin", true)
+        end)
+    end
+    mark(root)
+    for _, descendant in ipairs(root:GetDescendants()) do
+        mark(descendant)
+    end
+    root.DescendantAdded:Connect(mark)
+end
+
 -- // Cleanup existing instances if re-running
 if PlayerGui:FindFirstChild("ApexSystemControl") then
     PlayerGui.ApexSystemControl:Destroy()
@@ -215,11 +236,16 @@ ApexLibrary.Version = "APEX_SYS V3.8 PLUS"
 -- 13: fullscreen is 50% wide and 70% tall, with two tab panes side by side.
 -- 14: fullscreen tabs are placed with a per-pane + button.
 -- 15: the + buttons appear only after a fullscreen tab is armed.
--- 16: library-owned CONFIG tab is pinned last, opens on every menu open, and
---     carries mandatory shared settings (anti-AFK, accent, menu key, lock).
---     The shared profile merges settings instead of overwriting them, and
---     numeric inputs support Min/Max/Integer clamping with auto-correction.
-ApexLibrary.LayoutRevision = 16
+-- 16: library-owned CONFIG tab is pinned last and carries mandatory shared
+--     settings (anti-AFK, accent, menu key, lock). The shared profile merges
+--     settings instead of overwriting them, and numeric inputs support
+--     Min/Max/Integer clamping with auto-correction.
+-- 17: CONFIG is the initial landing tab only; minimizing and reopening keeps
+--     the last active tab. The whole UI is marked NoSkin so games that skin
+--     PlayerGui cannot recolor buttons or break the color picker. Fullscreen
+--     kill-button tabs use the full content height, the CONFIG tab carries the
+--     kill button, and mobile-only/keyboard-only controls are platform-gated.
+ApexLibrary.LayoutRevision = 17
 local CONFIG_VERSION = 3
 ApexLibrary.ConfigVersion = CONFIG_VERSION
 ApexLibrary.ProfileFileName = ConfigFile
@@ -339,6 +365,9 @@ function ApexLibrary.new(config)
     -- can rely on TabBar/MainFrame being available. Script tabs are inserted
     -- before it in CreateTab, which keeps CONFIG pinned as the final tab.
     self:BuildConfigTab()
+    -- CONFIG is the initial landing tab. Unlike revision 16 this only happens
+    -- once: SetVisible(true) preserves whatever tab the user was last viewing.
+    self:SelectTab(CONFIG_TAB_NAME, true)
     self:ApplyAntiAFK(self.AntiAFKEnabled, false)
     -- Anti-AFK is mandatory for every script, so its value is always written
     -- to the shared profile even when this is a brand-new config file.
@@ -535,8 +564,9 @@ function ApexLibrary:ApplyAntiAFK(state, persist)
 end
 
 -- // Library-owned CONFIG tab
--- This tab is always created, always last, and always opens when the menu is
--- shown. Its contents are not exposed as a script tab, and the name is
+-- This tab is always created and pinned last. The library creates it before
+-- any script tab, so it is the initial landing tab; afterwards it behaves like
+-- a normal tab. Its contents are not exposed as a script tab, and the name is
 -- reserved in CreateTab.
 function ApexLibrary:BuildConfigTab()
     if self.ConfigTabObject then
@@ -563,7 +593,9 @@ function ApexLibrary:BuildConfigTab()
     )
 
     tab:CreateSectionLabel("INTERFACE PROFILE")
-    tab:CreateKeybindCard()
+    if IS_DESKTOP then
+        tab:CreateKeybindCard()
+    end
     tab:CreateColorPicker(
         "ACCENT COLOR",
         "Shared by every APEX window and script. Applies immediately and saves.",
@@ -572,21 +604,27 @@ function ApexLibrary:BuildConfigTab()
             self:SetAccentColor(color)
         end
     )
-    tab:CreateToggle(
-        "LOCK MOBILE BUTTON",
-        "Stops the floating claw button from being dragged. The position is still saved.",
-        self.IsButtonLocked,
-        function(state)
-            self.IsButtonLocked = state == true
-            self:SaveSettings()
-        end
-    )
+    if not IS_DESKTOP then
+        tab:CreateToggle(
+            "LOCK MOBILE BUTTON",
+            "Stops the floating claw button from being dragged. The position is still saved.",
+            self.IsButtonLocked,
+            function(state)
+                self.IsButtonLocked = state == true
+                self:SaveSettings()
+            end
+        )
+    end
     tab:CreateInfoCard("PROFILE_FILE", ConfigFile)
     tab:CreateReadMeCard(
         "LIBRARY-OWNED CONFIG",
-        "This tab is pinned by ApexLibraryPlus and always opens when the menu is shown. Script makers cannot create, rename, or remove it. Script-specific feature toggles live in that script's own config file.",
+        "This tab is pinned by ApexLibraryPlus and is the initial landing tab. Script makers cannot create, rename, or remove it. Script-specific feature toggles live in that script's own config file.",
         92
     )
+    -- Every script gets an unload control, even when the script itself never
+    -- creates a kill button. The library button runs the registered cleanup
+    -- callbacks before destroying the GUI.
+    tab:CreateKillButton("KILL SCRIPT & CLEANUP")
 
     return tab
 end
@@ -624,7 +662,14 @@ function ApexLibrary:GetAvailableContentHeight()
 end
 
 function ApexLibrary:GetTabContentHeight(entry)
-    if entry and entry.KillButton then
+    local hasKill = entry and entry.KillButton ~= nil
+    if self.IsFullscreen then
+        -- The compact cap only exists to leave room for the kill button in the
+        -- small window. Fullscreen panes are tall enough for the whole content
+        -- area, so using the cap there produced a giant blank gap.
+        return hasKill and self.ContentKillHeight or self.ContentFullHeight
+    end
+    if hasKill then
         return math.min(entry.KillContentHeight or self.ContentKillHeight, self.ContentKillHeight)
     end
     return self.ContentFullHeight
@@ -1010,6 +1055,7 @@ function ApexLibrary:BuildGUI()
     ScreenGui.ResetOnSpawn = false
     ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     ScreenGui.DisplayOrder = 999999
+    ProtectFromGameSkinning(ScreenGui)
     ScreenGui.Parent = PlayerGui
     self.ScreenGui = ScreenGui
 
@@ -1454,9 +1500,10 @@ function ApexLibrary:BuildGUI()
         self.IsAnimating = true
 
         if visible then
-            -- The CONFIG tab is the mandatory landing page. Select it every
-            -- time the menu opens, even if the user was on another tab before.
-            if self.ConfigTabEntry then
+            -- Preserve the tab the user was last viewing. CONFIG is only the
+            -- initial landing tab (created before any script tab); minimizing
+            -- and reopening must not yank the user back to it.
+            if not self:FindTabEntry(self.ActiveTabName) and self.ConfigTabEntry then
                 self:SelectTab(CONFIG_TAB_NAME, true)
             end
             MainFrame.Visible = true
@@ -1535,6 +1582,7 @@ function ApexLibrary:BuildGUI()
         MobileScreenGui.ResetOnSpawn = false
         MobileScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
         MobileScreenGui.DisplayOrder = 1000000
+        ProtectFromGameSkinning(MobileScreenGui)
         MobileScreenGui.Parent = PlayerGui
 
         local MobileButton = Instance.new("TextButton")
